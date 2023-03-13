@@ -247,6 +247,7 @@ BASE_SCRIPTS = [
     'feature_dersig.py',
     'feature_cltv.py',
     'mweb_basic.py',
+    'mweb_mempool.py',
     'mweb_mining.py',
     'mweb_reorg.py',
     'mweb_dbcrash.py',
