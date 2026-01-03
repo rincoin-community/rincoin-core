@@ -10,6 +10,15 @@
 #include <tinyformat.h>
 #include <util/system.h>
 
+#ifndef _WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/stat.h>
+#endif
+
+/* Buffer size for sequential reads (1 MB) */
+static constexpr size_t SEQUENTIAL_READ_BUFFER_SIZE = 1024 * 1024;
+
 FlatFileSeq::FlatFileSeq(fs::path dir, const char* prefix, size_t chunk_size) :
     m_dir(std::move(dir)),
     m_prefix(prefix),
@@ -44,6 +53,50 @@ FILE* FlatFileSeq::Open(const FlatFilePos& pos, bool read_only)
         LogPrintf("Unable to open file %s\n", path.string());
         return nullptr;
     }
+    if (pos.nPos && fseek(file, pos.nPos, SEEK_SET)) {
+        LogPrintf("Unable to seek to position %u of %s\n", pos.nPos, path.string());
+        fclose(file);
+        return nullptr;
+    }
+    return file;
+}
+
+FILE* FlatFileSeq::OpenSequential(const FlatFilePos& pos)
+{
+    if (pos.IsNull()) {
+        return nullptr;
+    }
+    fs::path path = FileName(pos);
+    FILE* file = fsbridge::fopen(path, "rb");
+    if (!file) {
+        LogPrintf("Unable to open file %s for sequential read\n", path.string());
+        return nullptr;
+    }
+
+    /* Set a larger buffer for better sequential read performance */
+    static thread_local char* seq_buffer = nullptr;
+    if (!seq_buffer) {
+        seq_buffer = new char[SEQUENTIAL_READ_BUFFER_SIZE];
+    }
+    setvbuf(file, seq_buffer, _IOFBF, SEQUENTIAL_READ_BUFFER_SIZE);
+
+#ifndef _WIN32
+    /* Advise the kernel about sequential access pattern */
+    int fd = fileno(file);
+    if (fd >= 0) {
+        /* Get file size for fadvise */
+        struct stat st;
+        if (fstat(fd, &st) == 0 && st.st_size > 0) {
+            /* Tell kernel we'll read sequentially - enables aggressive read-ahead */
+            posix_fadvise(fd, 0, st.st_size, POSIX_FADV_SEQUENTIAL);
+            /* Tell kernel we'll need this data soon - starts prefetching */
+            posix_fadvise(fd, 0, st.st_size, POSIX_FADV_WILLNEED);
+            LogPrint(BCLog::REINDEX, "Enabled sequential read optimization for %s (%ld MB)\n",
+                     path.filename().string(), st.st_size / (1024 * 1024));
+        }
+    }
+#endif
+
     if (pos.nPos && fseek(file, pos.nPos, SEEK_SET)) {
         LogPrintf("Unable to seek to position %u of %s\n", pos.nPos, path.string());
         fclose(file);

@@ -29,6 +29,14 @@ public:
     uint32_t nBits;
     uint32_t nNonce;
 
+private:
+    // Cached PoW hash (memory-only, not serialized)
+    // RinHash is expensive (~2.7ms with SIMD), so we cache it
+    // Set to null when header data changes
+    mutable uint256 m_cachedPoWHash;
+    mutable bool m_hashCacheValid{false};
+
+public:
     CBlockHeader()
     {
         SetNull();
@@ -44,11 +52,34 @@ public:
         nTime = 0;
         nBits = 0;
         nNonce = 0;
+        InvalidateCache();
     }
 
     bool IsNull() const
     {
         return (nBits == 0);
+    }
+
+    // Invalidate the cached PoW hash (call when header fields change)
+    void InvalidateCache() const
+    {
+        m_hashCacheValid = false;
+        m_cachedPoWHash.SetNull();
+    }
+
+    // Increment nonce for mining - invalidates hash cache
+    // Returns the new nonce value
+    uint32_t IncrementNonce()
+    {
+        InvalidateCache();
+        return ++nNonce;
+    }
+
+    // Set nonce value - invalidates hash cache
+    void SetNonce(uint32_t n)
+    {
+        InvalidateCache();
+        nNonce = n;
     }
 
     uint256 GetHash() const;

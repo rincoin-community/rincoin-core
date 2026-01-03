@@ -152,6 +152,8 @@ extern const std::vector<std::string> CHECKLEVEL_DOC;
 
 /** Open a block file (blk?????.dat) */
 FILE* OpenBlockFile(const FlatFilePos &pos, bool fReadOnly = false);
+/** Open a block file optimized for sequential reading (e.g., during reindex) */
+FILE* OpenBlockFileSequential(const FlatFilePos &pos);
 /** Translation to a filesystem path */
 fs::path GetBlockPosFilename(const FlatFilePos &pos);
 /** Import blocks from an external file */

@@ -67,6 +67,15 @@ public:
     FILE* Open(const FlatFilePos& pos, bool read_only = false);
 
     /**
+     * Open a handle optimized for sequential reading (e.g., during reindex).
+     * Uses posix_fadvise hints and larger buffers for better performance.
+     *
+     * @param[in] pos The position to open the file at.
+     * @return FILE* handle optimized for sequential reads, or nullptr on failure.
+     */
+    FILE* OpenSequential(const FlatFilePos& pos);
+
+    /**
      * Allocate additional space in a file after the given starting position. The amount allocated
      * will be the minimum multiple of the sequence chunk size greater than add_size.
      *

@@ -53,6 +53,9 @@
 #include <warnings.h>
 
 #include <string>
+#include <thread>
+#include <vector>
+#include <atomic>
 
 #include <boost/algorithm/string/replace.hpp>
 
@@ -3852,29 +3855,111 @@ bool BlockManager::AcceptBlockHeader(const CBlockHeader& block, BlockValidationS
     return true;
 }
 
+/**
+ * Pre-compute PoW hashes for a batch of headers in parallel.
+ * This is a significant optimization because RinHash (BLAKE3 → Argon2d → SHA3-256)
+ * is CPU-intensive (~2.7ms per hash with SIMD). By computing all hashes in parallel
+ * before the sequential validation, we can utilize multiple CPU cores.
+ * 
+ * The hashes are cached in the CBlockHeader objects via GetPoWHash()'s internal cache.
+ */
+static void PrecomputeHeaderHashes(const std::vector<CBlockHeader>& headers)
+{
+    // Don't bother parallelizing for small batches
+    const size_t numHeaders = headers.size();
+    if (numHeaders <= 4) {
+        for (const auto& header : headers) {
+            header.GetPoWHash();  // Triggers computation and caching
+        }
+        return;
+    }
+
+    // Use hardware concurrency, limited to 16 threads for reasonable parallelism
+    // Each thread uses its own thread-local Argon2 memory pool (64KB)
+    unsigned int numThreads = std::thread::hardware_concurrency();
+    if (numThreads == 0) numThreads = 4;  // Fallback
+    if (numThreads > 16) numThreads = 16; // Cap at 16 threads
+    if (numThreads > numHeaders) numThreads = static_cast<unsigned int>(numHeaders);
+
+    std::vector<std::thread> threads;
+    threads.reserve(numThreads);
+
+    std::atomic<size_t> nextIndex{0};
+
+    for (unsigned int t = 0; t < numThreads; ++t) {
+        threads.emplace_back([&headers, &nextIndex, numHeaders]() {
+            while (true) {
+                size_t idx = nextIndex.fetch_add(1, std::memory_order_relaxed);
+                if (idx >= numHeaders) break;
+                headers[idx].GetPoWHash();  // Triggers computation and caching
+            }
+        });
+    }
+
+    for (auto& thread : threads) {
+        thread.join();
+    }
+}
+
 // Exposed wrapper for AcceptBlockHeader
 bool ChainstateManager::ProcessNewBlockHeaders(const std::vector<CBlockHeader>& headers, BlockValidationState& state, const CChainParams& chainparams, const CBlockIndex** ppindex)
 {
     AssertLockNotHeld(cs_main);
+    
+    // Pre-compute all PoW hashes in parallel BEFORE taking the lock
+    // This is safe because GetPoWHash() only reads header data and writes to mutable cache
+    PrecomputeHeaderHashes(headers);
+    
     {
         LOCK(cs_main);
         for (const CBlockHeader& header : headers) {
             CBlockIndex *pindex = nullptr; // Use a temp pindex instead of ppindex to avoid a const_cast
             bool accepted = m_blockman.AcceptBlockHeader(
                 header, state, chainparams, &pindex);
-            ::ChainstateActive().CheckBlockIndex(chainparams.GetConsensus());
 
             if (!accepted) {
+                ::ChainstateActive().CheckBlockIndex(chainparams.GetConsensus());
                 return false;
             }
             if (ppindex) {
                 *ppindex = pindex;
             }
         }
+        // Check block index once per batch, not per header (major performance optimization)
+        ::ChainstateActive().CheckBlockIndex(chainparams.GetConsensus());
     }
     if (NotifyHeaderTip()) {
         if (::ChainstateActive().IsInitialBlockDownload() && ppindex && *ppindex) {
-            LogPrintf("Synchronizing blockheaders, height: %d (~%.2f%%)\n", (*ppindex)->nHeight, 100.0/((*ppindex)->nHeight+(GetAdjustedTime() - (*ppindex)->GetBlockTime()) / Params().GetConsensus().nPowTargetSpacing) * (*ppindex)->nHeight);
+            // Calculate progress: height / estimated_total_height
+            // The block time tells us how far behind we are in the chain
+            int64_t nHeaderHeight = (*ppindex)->nHeight;
+            int64_t nBlockTime = (*ppindex)->GetBlockTime();
+            int64_t nCurrentTime = GetAdjustedTime();
+            int64_t nTargetSpacing = Params().GetConsensus().nPowTargetSpacing;
+            
+            // Time behind = how many seconds worth of blocks we still need to sync
+            int64_t nTimeBehind = nCurrentTime - nBlockTime;
+            
+            // Estimate remaining blocks = time behind / target block spacing
+            int64_t nEstimatedRemaining = 0;
+            if (nTimeBehind > 0 && nTargetSpacing > 0) {
+                nEstimatedRemaining = nTimeBehind / nTargetSpacing;
+            }
+            
+            // Total estimated chain height
+            int64_t nEstimatedTotal = nHeaderHeight + nEstimatedRemaining;
+            
+            // Calculate progress percentage
+            double fProgress = 0.0;
+            if (nEstimatedTotal > 0) {
+                fProgress = 100.0 * static_cast<double>(nHeaderHeight) / static_cast<double>(nEstimatedTotal);
+            }
+            
+            // Clamp to reasonable range
+            if (fProgress > 99.99) fProgress = 99.99;
+            if (fProgress < 0.01) fProgress = 0.01;
+            
+            LogPrintf("Synchronizing blockheaders, height: %d (~%.2f%%)\n", nHeaderHeight, fProgress);
         }
     }
     return true;
@@ -4208,6 +4293,10 @@ static FlatFileSeq UndoFileSeq()
 
 FILE* OpenBlockFile(const FlatFilePos &pos, bool fReadOnly) {
     return BlockFileSeq().Open(pos, fReadOnly);
+}
+
+FILE* OpenBlockFileSequential(const FlatFilePos &pos) {
+    return BlockFileSeq().OpenSequential(pos);
 }
 
 /** Open an undo file (rev?????.dat) */

@@ -117,7 +117,7 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
     CChainParams chainparams(Params());
 
     while (max_tries > 0 && block.nNonce < std::numeric_limits<uint32_t>::max() && !CheckProofOfWork(block.GetPoWHash(), block.nBits, chainparams.GetConsensus()) && !ShutdownRequested()) {
-        ++block.nNonce;
+        block.IncrementNonce();  // Use IncrementNonce() to invalidate hash cache
         --max_tries;
     }
     if (max_tries == 0 || ShutdownRequested()) {

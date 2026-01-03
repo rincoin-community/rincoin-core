@@ -13,12 +13,23 @@
 
 uint256 CBlockHeader::GetHash() const
 {
-    return RinHash(*this);
+    // Both GetHash() and GetPoWHash() return the same RinHash result
+    // Use the cached version to avoid recomputation
+    return GetPoWHash();
 }
 
 uint256 CBlockHeader::GetPoWHash() const
 {
-    return RinHash(*this);
+    // Check if we have a valid cached hash
+    if (m_hashCacheValid) {
+        return m_cachedPoWHash;
+    }
+    
+    // Compute the expensive RinHash and cache it
+    m_cachedPoWHash = RinHash(*this);
+    m_hashCacheValid = true;
+    
+    return m_cachedPoWHash;
 }
 
 std::string CBlock::ToString() const

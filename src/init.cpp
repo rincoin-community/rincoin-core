@@ -711,7 +711,7 @@ static void ThreadImport(ChainstateManager& chainman, std::vector<fs::path> vImp
             FlatFilePos pos(nFile, 0);
             if (!fs::exists(GetBlockPosFilename(pos)))
                 break; // No block files left to reindex
-            FILE *file = OpenBlockFile(pos, true);
+            FILE *file = OpenBlockFileSequential(pos);
             if (!file)
                 break; // This error is logged in OpenBlockFile
             LogPrintf("Reindexing block file blk%05u.dat...\n", (unsigned int)nFile);
