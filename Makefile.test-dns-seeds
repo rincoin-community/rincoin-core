@@ -1,0 +1,52 @@
+# Makefile for test-dns-seeds utility
+# Quick build without full autotools setup
+
+CXX = g++
+CXXFLAGS = -std=c++17 -O2 -Wall -Wextra -I. -Isrc -Isrc/secp256k1/include -Isrc/univalue/include -DHAVE_CONFIG_H
+LDFLAGS = -lpthread
+
+# Source files needed
+SOURCES = \
+	src/test-dns-seeds.cpp \
+	src/netbase.cpp \
+	src/netaddress.cpp \
+	src/chainparams.cpp \
+	src/util/strencodings.cpp \
+	src/util/system.cpp \
+	src/util/time.cpp \
+	src/logging.cpp \
+	src/random.cpp \
+	src/randomenv.cpp \
+	src/util/threadnames.cpp \
+	src/fs.cpp \
+	src/sync.cpp \
+	src/chainparamsbase.cpp \
+	src/arith_uint256.cpp \
+	src/uint256.cpp \
+	src/utilstrencodings.cpp \
+	src/hash.cpp \
+	src/crypto/sha256.cpp \
+	src/crypto/sha256_sse4.cpp \
+	src/crypto/hmac_sha512.cpp \
+	src/crypto/hmac_sha256.cpp \
+	src/crypto/sha512.cpp \
+	src/crypto/ripemd160.cpp \
+	src/support/cleanse.cpp \
+	src/support/lockedpool.cpp
+
+OBJECTS = $(SOURCES:.cpp=.o)
+
+TARGET = test-dns-seeds
+
+all: $(TARGET)
+
+$(TARGET): $(OBJECTS)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
+
+%.o: %.cpp
+	$(CXX) $(CXXFLAGS) -c -o $@ $<
+
+clean:
+	rm -f $(OBJECTS) $(TARGET)
+
+.PHONY: all clean
