@@ -12,15 +12,19 @@ if [ ! -f "configure.ac" ]; then
     exit 1
 fi
 
-# Method 1: Build using existing build system if available
-if [ -f "Makefile" ]; then
-    echo "Using existing build system..."
-    make src/test-dns-seeds
-    echo "✓ Build complete: src/test-dns-seeds"
-    echo ""
-    echo "You can now run the utility:"
-    echo "  ./src/test-dns-seeds -help"
-    exit 0
+# Method 1: Use the standalone Makefile
+if [ -f "Makefile.test-dns-seeds" ]; then
+    echo "Using Makefile.test-dns-seeds..."
+    make -f Makefile.test-dns-seeds
+    if [ $? -eq 0 ]; then
+        echo "✓ Build complete: ./test-dns-seeds"
+        echo ""
+        echo "You can now run the utility:"
+        echo "  ./test-dns-seeds -help"
+        exit 0
+    else
+        echo "Build with Makefile failed, trying direct compilation..."
+    fi
 fi
 
 # Method 2: Simple direct compilation

@@ -23,6 +23,10 @@
 #include <vector>
 #include <ctime>
 
+// Required global for translation function (not used in this utility)
+// Note: order matters - must match header declaration "const extern"
+extern const std::function<std::string(const char*)> G_TRANSLATION_FUN = nullptr;
+
 // Service flags that nodes should support (from protocol.h)
 static const uint64_t REQUIRED_SERVICE_BITS = 0x0;  // No specific requirements for testing
 
@@ -31,14 +35,14 @@ void PrintUsage()
     std::cout << "Usage: test-dns-seeds [options]\n\n"
               << "Test DNS seed servers for the Rincoin network.\n\n"
               << "Options:\n"
-              << "  -testnet              Test testnet seeds instead of mainnet\n"
-              << "  -regtest              Test regtest seeds instead of mainnet\n"
-              << "  -maxips=<n>           Maximum number of IPs to request from each seed (default: 256)\n"
-              << "  -seed=<hostname>      Test only a specific seed (can be used multiple times)\n"
-              << "  -servicebits=<hex>    Query for specific service bits (default: 0x0)\n"
-              << "  -timeout=<n>          Connection timeout in seconds (default: 5)\n"
-              << "  -verbose              Show detailed output\n"
-              << "  -help                 Display this help message\n"
+              << "  --testnet             Test testnet seeds instead of mainnet\n"
+              << "  --regtest             Test regtest seeds instead of mainnet\n"
+              << "  --maxips=<n>          Maximum number of IPs to request from each seed (default: 256)\n"
+              << "  --seed=<hostname>     Test only a specific seed (can be used multiple times)\n"
+              << "  --servicebits=<hex>   Query for specific service bits (default: 0x0)\n"
+              << "  --timeout=<n>         Connection timeout in seconds (default: 5)\n"
+              << "  --verbose             Show detailed output\n"
+              << "  --help                Display this help message\n"
               << std::endl;
 }
 
@@ -76,44 +80,44 @@ int main(int argc, char* argv[])
     for (int i = 1; i < argc; i++) {
         std::string arg(argv[i]);
         
-        if (arg == "-help" || arg == "--help" || arg == "-h") {
+        if (arg == "--help" || arg == "-h") {
             PrintUsage();
             return 0;
         }
-        else if (arg == "-testnet") {
+        else if (arg == "--testnet") {
             network = "test";
         }
-        else if (arg == "-regtest") {
+        else if (arg == "--regtest") {
             network = "regtest";
         }
-        else if (arg.substr(0, 8) == "-maxips=") {
+        else if (arg.substr(0, 9) == "--maxips=") {
             try {
-                maxIPs = std::stoi(arg.substr(8));
+                maxIPs = std::stoi(arg.substr(9));
             } catch (...) {
                 std::cerr << "Error: Invalid maxips value\n";
                 return 1;
             }
         }
-        else if (arg.substr(0, 6) == "-seed=") {
-            specificSeeds.push_back(arg.substr(6));
+        else if (arg.substr(0, 7) == "--seed=") {
+            specificSeeds.push_back(arg.substr(7));
         }
-        else if (arg.substr(0, 13) == "-servicebits=") {
+        else if (arg.substr(0, 14) == "--servicebits=") {
             try {
-                serviceBits = std::stoull(arg.substr(13), nullptr, 16);
+                serviceBits = std::stoull(arg.substr(14), nullptr, 16);
             } catch (...) {
                 std::cerr << "Error: Invalid servicebits value\n";
                 return 1;
             }
         }
-        else if (arg.substr(0, 9) == "-timeout=") {
+        else if (arg.substr(0, 10) == "--timeout=") {
             try {
-                timeout = std::stoi(arg.substr(9));
+                timeout = std::stoi(arg.substr(10));
             } catch (...) {
                 std::cerr << "Error: Invalid timeout value\n";
                 return 1;
             }
         }
-        else if (arg == "-verbose" || arg == "-v") {
+        else if (arg == "--verbose" || arg == "-v") {
             verbose = true;
         }
         else {
