@@ -87,6 +87,13 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
      return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
  }
 
+static std::vector<uint256> GetFrozenMWEBOutputIDs()
+{
+    // Rincoin: MWEB has never been active on any Rincoin network, so there is
+    // no output to freeze. Upstream Litecoin lists its own mainnet output here.
+    return {};
+}
+
 /**
  * Main network
  */
@@ -134,6 +141,10 @@ public:
 
         consensus.nMinimumChainWork = uint256S("0x00");
         consensus.defaultAssumeValid = uint256S("0x000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");
+
+        // Rincoin: no grandfathered block (the upstream value is a Litecoin mainnet block hash).
+        consensus.mweb_input_metadata_grandfather_blockhash = uint256();
+        consensus.frozen_mweb_output_ids = GetFrozenMWEBOutputIDs();
 
         /**
          * The message start string is designed to be unlikely to occur in normal data.
