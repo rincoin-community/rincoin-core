@@ -94,6 +94,15 @@ static std::vector<uint256> GetFrozenMWEBOutputIDs()
     return {};
 }
 
+// Regtest-only test vector shared with the upstream functional test
+// mweb_p2p_mutated_block_submitblock.py (upstream uses the same ID on every network).
+static std::vector<uint256> GetRegTestFrozenMWEBOutputIDs()
+{
+    return {
+        uint256S("0x2f3a08d9f5ef5f388386c11efe935394b14b524220cff4ec5c81942b82e694f7"),
+    };
+}
+
 /**
  * Main network
  */
@@ -470,6 +479,8 @@ public:
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
+        // Regtest-only test vector so the upstream functional tests can exercise the rule.
+        consensus.frozen_mweb_output_ids = GetRegTestFrozenMWEBOutputIDs();
 
         pchMessageStart[0] = 0x72; // 'r'
         pchMessageStart[1] = 0x72; // 'r'
