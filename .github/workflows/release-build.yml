@@ -4,11 +4,14 @@ on:
   push:
     tags:
       - 'v*'
+    branches:
+      - 'aarch64-support'   # remove once merged to default branch
   workflow_dispatch:
     inputs:
       tag:
         description: 'Tag to build (for example v1.0.1)'
-        required: true
+        required: false
+        default: ''
         type: string
 
 permissions:
@@ -41,20 +44,28 @@ jobs:
       - name: Resolve build tag
         id: vars
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
             TAG="${{ inputs.tag }}"
-          else
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
+          else
+            # branch push (CI test) — use --local
+            TAG="--local"
           fi
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Build release artifacts
-        run: ./contrib/build_release.sh "${{ steps.vars.outputs.tag }}"
+        run: |
+          if [ "${{ steps.vars.outputs.tag }}" = "--local" ]; then
+            ./contrib/build_release.sh --local
+          else
+            ./contrib/build_release.sh "${{ steps.vars.outputs.tag }}"
+          fi
 
       - name: Upload release-builds artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rincoin-${{ steps.vars.outputs.tag }}-release-builds
+          name: rincoin-${{ steps.vars.outputs.tag == '--local' && 'local' || steps.vars.outputs.tag }}-release-builds
           path: release-builds/
           if-no-files-found: error
 
