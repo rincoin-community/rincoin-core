@@ -62,6 +62,7 @@ src/qt/bitcoin-qt.includes
 .dirstamp
 .libs
 .vscode
+.venv
 .*.swp
 *.*~*
 *.bak

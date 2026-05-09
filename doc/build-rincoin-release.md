@@ -7,6 +7,8 @@ This guide explains how to build official release binaries for Rincoin using the
 The `contrib/build_release.sh` script automates the process of building release binaries for multiple platforms:
 - **Linux (Ubuntu 20.04)** - Maximum compatibility: Ubuntu 18.04+, Debian 10+, RHEL 8+
 - **Linux (Ubuntu 24.04)** - Modern performance: Ubuntu 24.04+, Debian 12+
+- **Linux ARM64 (Ubuntu 20.04)** - Maximum compatibility for ARM64 systems
+- **Linux ARM64 (Ubuntu 24.04)** - Modern/performance variant for ARM64 systems
 - **Windows (x64)** - Windows 10 and Windows 11
 
 The script uses Docker to create reproducible builds in isolated environments and supports build caching for faster subsequent builds.
@@ -26,6 +28,18 @@ The script uses Docker to create reproducible builds in isolated environments an
 - 5-15% performance improvement for compute-intensive operations
 - Modern compiler optimizations and security features
 - **Package**: `rincoin-VERSION-x86_64-linux-gnu-ubuntu24.tar.gz`
+
+### Linux ARM64 Ubuntu 20.04 (Maximum Compatibility)
+- Cross-compiled on Ubuntu 20.04 using `aarch64-linux-gnu`
+- Compatible with modern ARM64 Linux distros using glibc 2.31+
+- Includes full binary set: daemon, CLI, TX, wallet, and Qt GUI
+- **Package**: `rincoin-VERSION-aarch64-linux-gnu.tar.gz`
+
+### Linux ARM64 Ubuntu 24.04 (Modern Performance)
+- Cross-compiled on Ubuntu 24.04 using `aarch64-linux-gnu`
+- Optimized for modern ARM64 systems with newer runtime stack
+- Includes full binary set: daemon, CLI, TX, wallet, and Qt GUI
+- **Package**: `rincoin-VERSION-aarch64-linux-gnu-ubuntu24.tar.gz`
 
 ### Windows x64
 - Cross-compiled on Ubuntu 24.04 using MinGW
@@ -60,6 +74,7 @@ Use the provided `win64.zip` - compatible with both Windows 10 and Windows 11.
 - ✅ Git-based builds from version tags
 - ✅ Automatic source code packaging (tar.gz and zip)
 - ✅ Multi-variant Linux builds (Ubuntu 20.04 and 24.04)
+- ✅ ARM64 Linux builds (Ubuntu 20.04 and 24.04)
 - ✅ Cross-platform compilation (Linux and Windows)
 - ✅ Build artifact caching for faster rebuilds
 - ✅ SHA256 checksum generation
@@ -199,6 +214,18 @@ This will:
 ./contrib/build_release.sh v1.0.2 https://github.com/Rin-coin/rincoin.git --clean
 ```
 
+#### Platform Switches
+
+By default, all platform groups are built. You can disable specific targets:
+
+```bash
+./contrib/build_release.sh v1.0.1 --no-linux-x86
+./contrib/build_release.sh v1.0.1 --no-aarch64
+./contrib/build_release.sh v1.0.1 --no-windows
+```
+
+These switches can be combined.
+
 ### Clean Flags Quick Reference
 
 | Flag | Clears Caches | Rebuilds Docker Images | Use Case |
@@ -206,6 +233,14 @@ This will:
 | (none) | No | No | Fast iterative builds |
 | `--clean` | Yes | **No** | Fresh dependency build, keep images |
 | `--clean-all` | Yes | Yes | Complete rebuild from scratch |
+
+### Platform Selection Flags
+
+| Flag | Effect |
+|------|--------|
+| `--no-linux-x86` | Skip both x86_64 Linux builds |
+| `--no-aarch64` | Skip both ARM64 Linux builds |
+| `--no-windows` | Skip Windows build |
 
 ## Build Process
 
@@ -241,10 +276,29 @@ The script performs the following steps:
 - Creates distribution zip: `rincoin-VERSION-win64.zip`
 - Compatible with: Windows 10 and Windows 11
 
-### 5. Finalization
+### 5. Linux ARM64 Builds
+- Creates/reuses ARM64-capable Docker images for Ubuntu 20.04 and 24.04
+- Builds dependencies via depends with `HOST=aarch64-linux-gnu`
+- Compiles ARM64 binaries with full feature parity including Qt GUI
+- Creates distribution tarballs:
+  - `rincoin-VERSION-aarch64-linux-gnu.tar.gz`
+  - `rincoin-VERSION-aarch64-linux-gnu-ubuntu24.tar.gz`
+
+### 6. Finalization
 - Generates SHA256 checksums for all artifacts
 - Creates release documentation (README.txt)
 - Organizes output in release-builds directory
+
+## Checksum Structure
+
+The release process uses two checksum layers:
+
+1. **Inside each binary archive** (tar.gz/zip):
+  - `SHA256SUMS.txt` is generated **before packaging**
+  - Contains checksums for the binary files included in that archive
+2. **Next to archives** (`tarballs/SHA256SUMS.txt`):
+  - Generated after archives are built
+  - Contains checksums of archive files themselves
 
 ## Build Caching
 
@@ -271,8 +325,10 @@ The script implements intelligent caching to speed up subsequent builds:
 |------------|-------------|--------------|---------|
 | Linux Ubuntu 20 only | ~25 min | ~10 min | ~60% |
 | Linux Ubuntu 24 only | ~25 min | ~10 min | ~60% |
+| Linux ARM64 Ubuntu 20 only | ~25 min | ~10 min | ~60% |
+| Linux ARM64 Ubuntu 24 only | ~25 min | ~10 min | ~60% |
 | Windows only | ~60 min | ~15 min | ~75% |
-| All three platforms | ~110 min | ~35 min | ~68% |
+| All five platform variants | ~160 min | ~50 min | ~68% |
 
 ### Managing Cache
 
@@ -322,6 +378,20 @@ release-builds/
     │   │   ├── rincoin-wallet                  # Linux wallet tool
     │   │   ├── rincoin-qt                      # Linux GUI
     │   │   └── SHA256SUMS.txt                  # Binary checksums
+    │   ├── linux-aarch64-ubuntu20/             # ARM64 Ubuntu 20.04 build
+    │   │   ├── rincoind                        # ARM64 Linux daemon
+    │   │   ├── rincoin-cli                     # ARM64 Linux RPC client
+    │   │   ├── rincoin-tx                      # ARM64 Linux transaction tool
+    │   │   ├── rincoin-wallet                  # ARM64 Linux wallet tool
+    │   │   ├── rincoin-qt                      # ARM64 Linux GUI
+    │   │   └── SHA256SUMS.txt                  # Binary checksums (also inside tarball)
+    │   ├── linux-aarch64-ubuntu24/             # ARM64 Ubuntu 24.04 build
+    │   │   ├── rincoind                        # ARM64 Linux daemon
+    │   │   ├── rincoin-cli                     # ARM64 Linux RPC client
+    │   │   ├── rincoin-tx                      # ARM64 Linux transaction tool
+    │   │   ├── rincoin-wallet                  # ARM64 Linux wallet tool
+    │   │   ├── rincoin-qt                      # ARM64 Linux GUI
+    │   │   └── SHA256SUMS.txt                  # Binary checksums (also inside tarball)
     │   └── windows/
     │       ├── rincoind.exe                    # Windows daemon
     │       ├── rincoin-cli.exe                 # Windows RPC client
@@ -332,6 +402,8 @@ release-builds/
     ├── tarballs/
     │   ├── rincoin-1.0.1-x86_64-linux-gnu.tar.gz          # Linux Ubuntu 20.04 distro
     │   ├── rincoin-1.0.1-x86_64-linux-gnu-ubuntu24.tar.gz # Linux Ubuntu 24.04 distro
+    │   ├── rincoin-1.0.1-aarch64-linux-gnu.tar.gz         # Linux ARM64 Ubuntu 20.04 distro
+    │   ├── rincoin-1.0.1-aarch64-linux-gnu-ubuntu24.tar.gz# Linux ARM64 Ubuntu 24.04 distro
     │   ├── rincoin-1.0.1-win64.zip                         # Windows distribution
     │   └── SHA256SUMS.txt                                   # Archive checksums
     └── README.txt                                           # Release documentation
@@ -355,7 +427,14 @@ sha256sum -c SHA256SUMS.txt
 
 **For individual binaries:**
 ```bash
-cd release-builds/1.0.1/binaries/linux/
+cd release-builds/1.0.1/binaries/linux-ubuntu20/
+sha256sum -c SHA256SUMS.txt
+```
+
+**For checksums embedded in an archive:**
+```bash
+tar -xzf release-builds/1.0.1/tarballs/rincoin-1.0.1-aarch64-linux-gnu.tar.gz
+cd rincoin-1.0.1/bin
 sha256sum -c SHA256SUMS.txt
 ```
 
@@ -482,11 +561,13 @@ git tag | grep v1.0.1
 
 ### Building for Additional Architectures
 
-The script currently supports x86_64 (Linux) and x64 (Windows). To add ARM support:
+The script currently supports:
 
-1. Modify `CROSS_HOSTS` array in the script
-2. Add ARM cross-compilation toolchain to Dockerfile
-3. Configure depends for ARM target
+- Linux x86_64 (Ubuntu 20.04 + 24.04 build variants)
+- Linux aarch64 (Ubuntu 20.04 + 24.04 build variants)
+- Windows x64
+
+Additional architectures can be added by extending target parameters in `contrib/build_release.sh`.
 
 Example architectures from Bitcoin Core:
 - `aarch64-linux-gnu` (64-bit ARM)
@@ -504,32 +585,25 @@ These provide additional guarantees that the same source produces identical bina
 
 ### Continuous Integration
 
-To integrate with CI/CD:
+This repository includes `.github/workflows/release-build.yml` for automated release builds on tag pushes and manual workflow dispatch.
+
+To trigger manually, use GitHub Actions workflow dispatch and provide a tag (for example `v1.0.1`).
+
+High-level workflow steps:
 
 ```yaml
-# Example GitHub Actions workflow
-name: Build Release
+# Simplified release workflow flow
+name: Build Release Binaries
 on:
   push:
     tags:
       - 'v*'
 jobs:
-  build:
-    runs-on: ubuntu-22.04
+  build-release:
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y docker.io git tar gzip zip
-          ./contrib/install_db4.sh $(pwd)
-      - name: Build release
-        run: ./contrib/build_release.sh ${{ github.ref_name }}
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: rincoin-${{ github.ref_name }}
-          path: release-builds/
+      - uses: actions/checkout@v4
+      - run: ./contrib/build_release.sh ${{ github.ref_name }}
 ```
 
 ## Platform Compatibility
