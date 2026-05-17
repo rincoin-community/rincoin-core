@@ -30,11 +30,13 @@ jobs:
       - name: Install prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y docker.io git tar gzip zip rsync
+          sudo apt-get install -y git tar gzip zip rsync
 
-      - name: Start Docker
+      - name: Verify Docker
         run: |
-          sudo systemctl start docker
+          # Docker Engine (containerd.io) is pre-installed on GitHub Actions runners;
+          # installing docker.io would conflict with it. Just ensure the daemon is up.
+          sudo systemctl start docker || true
           sudo chmod 666 /var/run/docker.sock
           docker info
 
