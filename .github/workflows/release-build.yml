@@ -123,7 +123,10 @@ jobs:
           brew install automake libtool boost miniupnpc pkg-config libevent qt@5 qrencode fmt librsvg
 
       - name: Install Berkeley DB 4.8
-        run: ./contrib/install_db4.sh "$(pwd)"
+        # Pass --with-mutex=POSIX/pthreads because BDB 4.8 predates Apple Silicon
+        # and its configure script cannot auto-detect a mutex implementation on arm64.
+        # POSIX pthreads are available on both x86_64 and arm64 macOS.
+        run: ./contrib/install_db4.sh "$(pwd)" --with-mutex=POSIX/pthreads
 
       - name: Build
         run: |
