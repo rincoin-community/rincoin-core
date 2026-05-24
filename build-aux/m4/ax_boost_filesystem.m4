@@ -104,7 +104,12 @@ AC_DEFUN([AX_BOOST_FILESYSTEM],
 
             fi
             if test "x$ax_lib" = "x"; then
-                AC_MSG_ERROR(Could not find a version of the Boost::Filesystem library!)
+                dnl Boost::Filesystem is header-only since Boost 1.74; modern
+                dnl Homebrew no longer ships a standalone library file for it.
+                dnl If no library file exists, accept an empty BOOST_FILESYSTEM_LIB.
+                BOOST_FILESYSTEM_LIB=""
+                AC_SUBST(BOOST_FILESYSTEM_LIB)
+                link_filesystem="yes"
             fi
 			if test "x$link_filesystem" != "xyes"; then
 				AC_MSG_ERROR(Could not link against $ax_lib !)
