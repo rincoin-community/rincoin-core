@@ -80,8 +80,9 @@ FILE* FlatFileSeq::OpenSequential(const FlatFilePos& pos)
     }
     setvbuf(file, seq_buffer, _IOFBF, SEQUENTIAL_READ_BUFFER_SIZE);
 
-#ifndef _WIN32
-    /* Advise the kernel about sequential access pattern */
+#ifdef __linux__
+    /* Advise the kernel about sequential access pattern (Linux only; posix_fadvise
+       is not available on macOS or Windows) */
     int fd = fileno(file);
     if (fd >= 0) {
         /* Get file size for fadvise */
