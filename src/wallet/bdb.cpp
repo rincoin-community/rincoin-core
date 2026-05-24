@@ -627,7 +627,14 @@ bool BerkeleyDatabase::Backup(const std::string& strDest) const
                         return false;
                     }
 
+                    // copy_options::overwrite_existing was introduced in Boost 1.74;
+                    // the old copy_option::overwrite_if_exists is unavailable on
+                    // newer Boost (e.g. Homebrew 1.87+) where it was removed.
+#if BOOST_VERSION >= 107400
                     fs::copy_file(pathSrc, pathDest, fs::copy_options::overwrite_existing);
+#else
+                    fs::copy_file(pathSrc, pathDest, fs::copy_option::overwrite_if_exists);
+#endif
                     LogPrintf("copied %s to %s\n", strFile, pathDest.string());
                     return true;
                 } catch (const fs::filesystem_error& e) {
