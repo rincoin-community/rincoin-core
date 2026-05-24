@@ -134,6 +134,11 @@ jobs:
           export PKG_CONFIG_PATH="$(brew --prefix qt@5)/lib/pkgconfig:$PKG_CONFIG_PATH"
           export CPPFLAGS="-I$(brew --prefix)/include"
           export LDFLAGS="-L$(brew --prefix)/lib"
+          # AX_BOOST_* macros check these variables directly. Without them the
+          # macros fail to find libraries that Homebrew ships with the -mt
+          # (multithreaded) suffix (e.g. libboost_system-mt.a).
+          export BOOST_INCLUDEDIR="$(brew --prefix boost)/include"
+          export BOOST_LIBRARYDIR="$(brew --prefix boost)/lib"
           ./autogen.sh
           ./configure \
             BDB_LIBS="-L$(pwd)/db4/lib -ldb_cxx-4.8" \
