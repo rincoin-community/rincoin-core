@@ -695,15 +695,15 @@ else:
         else:
             sys.stderr.write("Error: Could not find Qt translation path\n")
             sys.exit(1)
-    add_qt_tr = ["qt_{}.qm".format(lng) for lng in config.add_qt_tr[0].split(",")]
-    for lng_file in add_qt_tr:
+    add_qt_tr = []
+    for lng_file in ["qt_{}.qm".format(lng) for lng in config.add_qt_tr[0].split(",")]:
         p = os.path.join(qt_tr_dir, lng_file)
         if verbose >= 3:
             print("Checking for \"{}\"...".format(p))
-        if not os.path.exists(p):
-            if verbose >= 1:
-                sys.stderr.write("Error: Could not find Qt translation file \"{}\"\n".format(lng_file))
-                sys.exit(1)
+        if os.path.exists(p):
+            add_qt_tr.append(lng_file)
+        else:
+            sys.stderr.write("Warning: Could not find Qt translation file \"{}\", skipping\n".format(lng_file))
 
 # ------------------------------------------------
 
