@@ -87,9 +87,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-13
-            arch: x86_64
-            tarball_suffix: x86_64-apple-darwin
+          # macos-13 (x86_64) runners are no longer available on GitHub Actions.
+          # Uncomment when/if Intel runner support is restored.
+          # - runner: macos-13
+          #   arch: x86_64
+          #   tarball_suffix: x86_64-apple-darwin
           - runner: macos-14
             arch: arm64
             tarball_suffix: arm64-apple-darwin
