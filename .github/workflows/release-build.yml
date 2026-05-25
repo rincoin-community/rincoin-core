@@ -141,6 +141,34 @@ jobs:
           # Pass the prefix and lib dir explicitly via configure flags so
           # BOOST_LDFLAGS is set correctly before AX_BOOST_SYSTEM runs.
           BOOST_PREFIX="$(brew --prefix boost)"
+
+          # BSD ar (macOS) cannot merge .a archives — it embeds them as file
+          # members instead of extracting their object files.  The automake
+          # rule for libbitcoin_crypto_base.a uses LIBADD to fold libargon2.a
+          # into it, which fails at link time with:
+          #   ld: archive member 'libargon2.a' not a mach-o file
+          # Wrap ar so that whenever an .a appears in the inputs we use
+          # Apple's /usr/bin/libtool -static, which merges archives correctly.
+          cat > /tmp/ar-merge.sh << 'AREOF'
+          #!/bin/bash
+          FLAG="$1"; OUTPUT="$2"; shift 2
+          OBJECTS=(); ARCHIVES=()
+          for f in "$@"; do
+            if [[ "$f" == *.a ]]; then ARCHIVES+=("$f"); else OBJECTS+=("$f"); fi
+          done
+          rm -f "$OUTPUT"
+          if [[ ${#ARCHIVES[@]} -eq 0 ]]; then
+            /usr/bin/ar "$FLAG" "$OUTPUT" "${OBJECTS[@]}"
+          elif [[ ${#OBJECTS[@]} -gt 0 ]]; then
+            /usr/bin/ar cru "$OUTPUT" "${OBJECTS[@]}"
+            /usr/bin/libtool -static -o "$OUTPUT" "$OUTPUT" "${ARCHIVES[@]}"
+          else
+            /usr/bin/libtool -static -o "$OUTPUT" "${ARCHIVES[@]}"
+          fi
+          AREOF
+          chmod +x /tmp/ar-merge.sh
+          export AR=/tmp/ar-merge.sh
+
           ./autogen.sh
           ./configure \
             --with-boost="${BOOST_PREFIX}" \
@@ -154,6 +182,12 @@ jobs:
             --with-incompatible-bdb=no \
             --with-gui=qt5
           make -j$(sysctl -n hw.logicalcpu)
+
+      - name: Debug via SSH (on failure)
+        if: failure()
+        uses: mxschmitt/action-tmate@v3
+        with:
+          timeout-minutes: 30
 
       - name: Create DMG
         run: |
