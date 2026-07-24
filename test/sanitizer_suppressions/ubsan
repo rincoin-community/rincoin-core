@@ -22,6 +22,9 @@ unsigned-integer-overflow:crypto/ripemd160.cpp
 unsigned-integer-overflow:crypto/sha1.cpp
 unsigned-integer-overflow:crypto/sha256.cpp
 unsigned-integer-overflow:crypto/sha512.cpp
+unsigned-integer-overflow:crypto/sha3.cpp
+unsigned-integer-overflow:crypto/blake3/*
+unsigned-integer-overflow:crypto/argon2/*
 unsigned-integer-overflow:hash.cpp
 unsigned-integer-overflow:leveldb/db/log_reader.cc
 unsigned-integer-overflow:leveldb/util/bloom.cc
