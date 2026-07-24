@@ -6,6 +6,14 @@
 
 export LC_ALL=C.UTF-8
 
+# Git (>= 2.35.2, and security-backported builds such as Ubuntu 20.04's git)
+# refuses to operate on a repository owned by a different user. In the CI
+# container the bind-mounted work tree is owned by the host user while commands
+# run as root, so mark it safe before any git-invoking build step. In
+# particular `make distdir` runs `git archive` to embed clientversion/build
+# info and would otherwise fail with "detected dubious ownership".
+DOCKER_EXEC git config --global --add safe.directory "${BASE_ROOT_DIR}"
+
 BITCOIN_CONFIG_ALL="--disable-dependency-tracking --prefix=$DEPENDS_DIR/$HOST --bindir=$BASE_OUTDIR/bin --libdir=$BASE_OUTDIR/lib"
 DOCKER_EXEC "ccache --zero-stats --max-size=$CCACHE_SIZE"
 
