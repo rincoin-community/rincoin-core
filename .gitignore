@@ -1,5 +1,9 @@
 *.tar.gz
 
+# Output of the local, testing-only build helpers
+# (contrib/build-windows-local.ps1, contrib/build-linux-local.sh)
+release-builds-local/
+
 *.exe
 *.pdb
 src/rincoin

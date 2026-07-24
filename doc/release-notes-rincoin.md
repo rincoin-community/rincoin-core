@@ -35,8 +35,24 @@ work only. Highlights so far:
   an ASan/UBSan build. The gate is headless (core unit tests + functional
   suite); Qt GUI test vectors are a separate follow-up. Each run publishes a
   downloadable `test-results-<leg>` artifact.
+- **Test suite made green:** rebranded the `bitcoin-util` test fixtures to
+  `rincoin-tx` with Rincoin addresses, dropped the stale Litecoin smoke
+  benchmark from `make check`, and added UBSan suppressions for the intentional
+  wrapping arithmetic in the crypto primitives.
+- **Local build helpers (developer tooling, not shipped):**
+  `contrib/build-windows-local.ps1` (Docker + MinGW cross-build on Windows) and
+  `contrib/build-linux-local.sh` (native, ccache-accelerated). Both are
+  explicitly for local testing only — unsigned and non-reproducible — and keep
+  all outputs and caches out of the repository.
 - **Docs:** added [`doc/rincoin-parameters.md`](rincoin-parameters.md) and this
   consolidated history.
+
+> **Acknowledgement.** Some of the above test-suite adaptations overlap with
+> work in the parallel Aevust fork, which reached a number of them first; a few
+> we arrived at independently before noticing theirs. Credit to the Aevust
+> contributors for the test-fixture and benchmark clean-ups. This applies to
+> **test and tooling changes only** — consensus rules are decided and
+> implemented independently by this project.
 
 No public version number is assigned to this development line yet.
 
