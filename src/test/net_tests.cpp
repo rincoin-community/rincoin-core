@@ -388,7 +388,7 @@ BOOST_AUTO_TEST_CASE(cnetaddr_serialize_v1)
 
     addr.SetInternal("a");
     s << addr;
-    BOOST_CHECK_EQUAL(HexStr(s), "fd6ce9fe4549ca978112ca1bbdcafac2");
+    BOOST_CHECK_EQUAL(HexStr(s), "fd2ddd82f5c8ca978112ca1bbdcafac2");
     s.clear();
 }
 
