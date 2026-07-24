@@ -91,6 +91,9 @@ if BUILD_BITCOIND
   bin_PROGRAMS += rincoind
 endif
 
+# Add test-dns-seeds as a non-installed program
+noinst_PROGRAMS += test-dns-seeds
+
 if BUILD_BITCOIN_NODE
   bin_PROGRAMS += rincoin-node
 endif
@@ -718,6 +721,30 @@ rincoin_cli_LDADD = \
   $(LIBBITCOIN_CRYPTO)
 
 rincoin_cli_LDADD += $(BOOST_LIBS) $(CRYPTO_LIBS) $(EVENT_LIBS) $(MWEB_LIBS)
+#
+
+# test-dns-seeds utility #
+test_dns_seeds_SOURCES = test-dns-seeds.cpp
+test_dns_seeds_CPPFLAGS = $(AM_CPPFLAGS) $(BITCOIN_INCLUDES)
+test_dns_seeds_CXXFLAGS = $(AM_CXXFLAGS) $(PIE_FLAGS)
+test_dns_seeds_LDFLAGS = $(RELDFLAGS) $(AM_LDFLAGS) $(LIBTOOL_APP_LDFLAGS) $(PTHREAD_FLAGS)
+
+test_dns_seeds_LDADD = \
+  $(LIBBITCOIN_SERVER) \
+  $(LIBBITCOIN_COMMON) \
+  $(LIBBITCOIN_CONSENSUS) \
+  $(LIBBITCOIN_UTIL) \
+  $(LIBUNIVALUE) \
+  $(LIBBITCOIN_CRYPTO) \
+  $(LIBSECP256K1) \
+  $(LIBMW) \
+  $(LIBBITCOIN_UTIL) \
+  $(BOOST_LIBS) \
+  $(CRYPTO_LIBS) \
+  $(MWEB_LIBS) \
+  $(LIBLEVELDB) \
+  $(LIBLEVELDB_SSE42) \
+  $(LIBMEMENV)
 #
 
 # bitcoin-tx binary #
