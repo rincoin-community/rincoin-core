@@ -6,6 +6,7 @@ on:
       - 'v*'
     branches:
       - 'aarch64-support'   # remove once merged to default branch
+      - 'apple-support'     # remove once merged to default branch
   workflow_dispatch:
     inputs:
       tag:
@@ -23,7 +24,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -65,7 +66,7 @@ jobs:
           fi
 
       - name: Upload release-builds artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rincoin-${{ steps.vars.outputs.tag == '--local' && 'local' || steps.vars.outputs.tag }}-release-builds
           path: release-builds/
@@ -73,10 +74,154 @@ jobs:
 
       - name: Publish GitHub Release assets
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
           files: |
             release-builds/*/tarballs/*
             release-builds/*/source/SHA256SUMS.txt
             release-builds/*/tarballs/SHA256SUMS.txt
+
+  build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macos-13 (x86_64) runners are no longer available on GitHub Actions.
+          # Uncomment when/if Intel runner support is restored.
+          # - runner: macos-13
+          #   arch: x86_64
+          #   tarball_suffix: x86_64-apple-darwin
+          - runner: macos-14
+            arch: arm64
+            tarball_suffix: arm64-apple-darwin
+
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Resolve build tag
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            # branch push (CI test) — use --local
+            TAG="--local"
+          fi
+          VERSION="${TAG#v}"
+          [ "$TAG" = "--local" ] && VERSION="local"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Install dependencies
+        run: |
+          brew install automake libtool boost miniupnpc pkg-config libevent qt@5 qrencode fmt librsvg
+
+      - name: Install Berkeley DB 4.8
+        # Pass --with-mutex=POSIX/pthreads because BDB 4.8 predates Apple Silicon
+        # and its configure script cannot auto-detect a mutex implementation on arm64.
+        # POSIX pthreads are available on both x86_64 and arm64 macOS.
+        run: ./contrib/install_db4.sh "$(pwd)" --with-mutex=POSIX/pthreads
+
+      - name: Build
+        run: |
+          export PATH="$(brew --prefix qt@5)/bin:$PATH"
+          export PKG_CONFIG_PATH="$(brew --prefix qt@5)/lib/pkgconfig:$PKG_CONFIG_PATH"
+          export CPPFLAGS="-I$(brew --prefix)/include"
+          export LDFLAGS="-L$(brew --prefix)/lib"
+          # ax_boost_base.m4 searches only /usr /usr/local /opt /opt/local —
+          # /opt/homebrew (Homebrew ARM64 prefix) is absent from that list.
+          # Pass the prefix and lib dir explicitly via configure flags so
+          # BOOST_LDFLAGS is set correctly before AX_BOOST_SYSTEM runs.
+          BOOST_PREFIX="$(brew --prefix boost)"
+
+          # BSD ar (macOS) cannot merge .a archives — it embeds them as file
+          # members instead of extracting their object files.  The automake
+          # rule for libbitcoin_crypto_base.a uses LIBADD to fold libargon2.a
+          # into it, which fails at link time with:
+          #   ld: archive member 'libargon2.a' not a mach-o file
+          # Wrap ar so that whenever an .a appears in the inputs we use
+          # Apple's /usr/bin/libtool -static, which merges archives correctly.
+          cat > /tmp/ar-merge.sh << 'AREOF'
+          #!/bin/bash
+          FLAG="$1"; OUTPUT="$2"; shift 2
+          OBJECTS=(); ARCHIVES=()
+          for f in "$@"; do
+            if [[ "$f" == *.a ]]; then ARCHIVES+=("$f"); else OBJECTS+=("$f"); fi
+          done
+          rm -f "$OUTPUT"
+          if [[ ${#ARCHIVES[@]} -eq 0 ]]; then
+            /usr/bin/ar "$FLAG" "$OUTPUT" "${OBJECTS[@]}"
+          elif [[ ${#OBJECTS[@]} -gt 0 ]]; then
+            /usr/bin/ar cru "$OUTPUT" "${OBJECTS[@]}"
+            /usr/bin/libtool -static -o "$OUTPUT" "$OUTPUT" "${ARCHIVES[@]}"
+          else
+            /usr/bin/libtool -static -o "$OUTPUT" "${ARCHIVES[@]}"
+          fi
+          AREOF
+          chmod +x /tmp/ar-merge.sh
+          export AR=/tmp/ar-merge.sh
+
+          ./autogen.sh
+          ./configure \
+            --with-boost="${BOOST_PREFIX}" \
+            --with-boost-libdir="${BOOST_PREFIX}/lib" \
+            BDB_LIBS="-L$(pwd)/db4/lib -ldb_cxx-4.8" \
+            BDB_CFLAGS="-I$(pwd)/db4/include" \
+            --prefix=/ \
+            --disable-tests \
+            --disable-bench \
+            --enable-reduce-exports \
+            --with-incompatible-bdb=no \
+            --with-gui=qt5
+          make -j$(sysctl -n hw.logicalcpu)
+
+      - name: Debug via SSH (on failure)
+        if: failure()
+        uses: mxschmitt/action-tmate@v3
+        with:
+          timeout-minutes: 30
+
+      - name: Create DMG
+        run: |
+          export PATH="$(brew --prefix qt@5)/bin:$PATH"
+          make deploy
+          mv Rincoin-Qt.dmg "Rincoin-Qt-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.dmg"
+
+      - name: Package binaries
+        env:
+          VERSION: ${{ steps.vars.outputs.version }}
+          SUFFIX: ${{ matrix.tarball_suffix }}
+        run: |
+          DIR="rincoin-${VERSION}"
+          mkdir -p "${DIR}/bin"
+          cp src/rincoind src/rincoin-cli src/rincoin-tx src/rincoin-wallet src/qt/rincoin-qt "${DIR}/bin/"
+          cd "${DIR}/bin"
+          shasum -a 256 rincoind rincoin-cli rincoin-tx rincoin-wallet rincoin-qt > SHA256SUMS.txt
+          cd ../..
+          tar czf "rincoin-${VERSION}-${SUFFIX}.tar.gz" "${DIR}/"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rincoin-${{ steps.vars.outputs.tag == '--local' && 'local' || steps.vars.outputs.tag }}-macos-${{ matrix.arch }}
+          path: |
+            rincoin-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.tar.gz
+            Rincoin-Qt-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.dmg
+          if-no-files-found: error
+
+      - name: Publish GitHub Release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.vars.outputs.tag }}
+          files: |
+            rincoin-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.tar.gz
+            Rincoin-Qt-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.dmg
