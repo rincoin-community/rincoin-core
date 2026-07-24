@@ -42,7 +42,7 @@ BOOST_AUTO_TEST_CASE(rinhash_canonical_pow_vector)
 
 BOOST_AUTO_TEST_CASE(rinhash_peer_proto_floor_params)
 {
-    struct Case { const char* net; int height; int floor; };
+    struct Case { std::string net; int height; int floor; };
     const Case cases[] = {
         {CBaseChainParams::MAIN,    840000, 70018},
         {CBaseChainParams::TESTNET,   4200, 70018},
