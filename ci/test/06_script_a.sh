@@ -25,20 +25,19 @@ else
 fi
 END_FOLD
 
-DOCKER_EXEC mkdir -p "${BASE_BUILD_DIR}"
-export P_CI_DIR="${BASE_BUILD_DIR}"
+export P_CI_DIR="${BASE_ROOT_DIR}"
 
 BEGIN_FOLD configure
-DOCKER_EXEC "${BASE_ROOT_DIR}/configure" --cache-file=config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG || ( (DOCKER_EXEC cat config.log) && false)
+DOCKER_EXEC ./configure --cache-file=config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG || ( (DOCKER_EXEC cat config.log) && false)
 END_FOLD
 
-# Build the real source tree out-of-tree (VPATH) directly in BASE_BUILD_DIR.
-# We intentionally do NOT build from a `make distdir` copy: the distribution
-# tarball is currently incomplete (several vendored components — argon2, libmw
-# and its bundled deps — do not declare all of their headers for `make dist`),
-# which is a separate packaging issue tracked apart from CI. A VPATH build of
-# the checked-out tree still exercises an out-of-tree build with every header
-# present, keeping CI focused on the code rather than dist packaging.
+# Build in-tree (srcdir == builddir), mirroring how release binaries are built.
+# We do NOT build from a `make distdir` copy (the dist tarball is incomplete for
+# some vendored components: argon2, libmw and its bundled deps do not declare
+# all of their headers for `make dist`), nor as a separate VPATH tree (a few
+# fork-added libmw test-framework include paths are not written VPATH-relative,
+# e.g. -Ilibmw/test/framework/include). An in-tree build sidesteps both issues
+# and is the most representative of the actual release build.
 
 set -o errtrace
 trap 'DOCKER_EXEC "cat ${BASE_SCRATCH_DIR}/sanitizer-output/* 2> /dev/null"' ERR
