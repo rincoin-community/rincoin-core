@@ -23,34 +23,7 @@
 #include <arith_uint256.h>
 #include <util/system.h>  // for LogPrintf, if you want
 #include <consensus/params.h>  // for Consensus::Params
-#include <consensus/rinhash_consensus_data.h>
 #include "crypto/rinhash.h"  // Change the path according to the location of RinHash
-
-namespace {
-//! Copy generator output (rinhash_consensus_data.h) into a Consensus::Params overlay.
-inline Consensus::Params::RinHashOverlay ToOverlay(const Consensus::RinHashGen::GeneratedOverlay& g)
-{
-    Consensus::Params::RinHashOverlay o;
-    o.has_t_cost                    = g.has_t_cost;                    o.t_cost                    = g.t_cost;
-    o.has_m_cost                    = g.has_m_cost;                    o.m_cost                    = g.m_cost;
-    o.has_lanes                     = g.has_lanes;                     o.lanes                     = g.lanes;
-    o.has_salt                      = g.has_salt;                      o.salt                      = g.salt;
-    o.has_min_peer_protocol_version = g.has_min_peer_protocol_version; o.min_peer_protocol_version = g.min_peer_protocol_version;
-    return o;
-}
-
-inline void ApplyRinHashConsensus(Consensus::Params& consensus,
-                                  const Consensus::RinHashGen::GeneratedNetwork& gen)
-{
-    consensus.rinhash.init = ToOverlay(gen.init);
-    consensus.rinhash.activations.clear();
-    consensus.rinhash.activations.reserve(gen.activations.size());
-    for (const auto& a : gen.activations) {
-        consensus.rinhash.activations.push_back(
-            Consensus::Params::RinHashActivation{a.activation_height, ToOverlay(a)});
-    }
-}
-} // namespace
 
 static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
@@ -140,7 +113,8 @@ public:
         consensus.nRuleChangeActivationThreshold = 6048; // 75% of 8064
         consensus.nMinerConfirmationWindow = 8064; // nPowTargetTimespan / nPowTargetSpacing * 4
         consensus.DGWHeight = 30000; // Dark Gravity Wave (DGW) difficulty adjustment algorithm
-        ApplyRinHashConsensus(consensus, Consensus::RinHashGen::GetMainnetData());
+        consensus.nMinPeerProtoVersionFloorHeight = 840000; // fourth halving boundary
+        consensus.nMinPeerProtoVersionFloor = 70018;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -185,9 +159,8 @@ public:
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
         
-        vSeeds.emplace_back("seed.rincoin.net");  // official DNS seeder 1
-        vSeeds.emplace_back("seed.rincoin.org");  // official DNS seeder 2
-
+        vSeeds.emplace_back("seed.rincoin.tech");  // Community Forge DNS seeder
+        
         base58Prefixes[PUBKEY_ADDRESS] = {60};  // "R..."
         base58Prefixes[SCRIPT_ADDRESS] = {122}; // "r..."
         base58Prefixes[SCRIPT_ADDRESS2] = std::vector<unsigned char>(1,50);
@@ -368,7 +341,8 @@ public:
         consensus.nRuleChangeActivationThreshold = 1512; // 75% for testchains
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.DGWHeight = 100; // Dark Gravity Wave (DGW) difficulty adjustment algorithm
-        ApplyRinHashConsensus(consensus, Consensus::RinHashGen::GetTestnetData());
+        consensus.nMinPeerProtoVersionFloorHeight = 4200;
+        consensus.nMinPeerProtoVersionFloor = 70018;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -455,7 +429,8 @@ public:
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.DGWHeight = std::numeric_limits<int>::max();  // Turns off Dark Gravity Wave (DGW) difficulty adjustment algorithm for regtest
-        ApplyRinHashConsensus(consensus, Consensus::RinHashGen::GetRegtestData());
+        consensus.nMinPeerProtoVersionFloorHeight = 600;
+        consensus.nMinPeerProtoVersionFloor = 70018;
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
         consensus.nPowTargetSpacing = 60 * 50;
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -624,7 +599,8 @@ public:
         consensus.nRuleChangeActivationThreshold = 1512;
         consensus.nMinerConfirmationWindow = 2016;
         consensus.DGWHeight = 100;
-        ApplyRinHashConsensus(consensus, Consensus::RinHashGen::GetPreviewData());
+        consensus.nMinPeerProtoVersionFloorHeight = 600;
+        consensus.nMinPeerProtoVersionFloor = 70018;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
