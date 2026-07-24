@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - dev/driftwood
+      - 'driftwood/**'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: unit+functional
+            file_env: './ci/test/00_setup_env_native_ci.sh'
+          - name: asan+ubsan
+            file_env: './ci/test/00_setup_env_native_asan.sh'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run CI harness
+        env:
+          FILE_ENV: ${{ matrix.file_env }}
+          MAKEJOBS: '-j4'
+        run: ./ci/test_run_all.sh
