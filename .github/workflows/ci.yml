@@ -41,3 +41,26 @@ jobs:
           FILE_ENV: ${{ matrix.file_env }}
           MAKEJOBS: '-j4'
         run: ./ci/test_run_all.sh
+
+      - name: Collect test results
+        if: always()
+        run: |
+          mkdir -p artifacts
+          # automake test protocol: per-test result files and the unit-test
+          # suite output (files may be owned by root from the CI container).
+          sudo find . -type f \( -name 'test-suite.log' -o -name '*.trs' -o -name 'test_litecoin.log' -o -name 'config.log' \) -exec cp --parents {} artifacts/ \; 2>/dev/null || true
+          # functional test runner logs (kept for failed tests)
+          if [ -d ci/scratch/test_runner ]; then sudo cp -r ci/scratch/test_runner artifacts/functional-tests 2>/dev/null || true; fi
+          # sanitizer findings, if any
+          if [ -d ci/scratch/sanitizer-output ]; then sudo cp -r ci/scratch/sanitizer-output artifacts/sanitizer-output 2>/dev/null || true; fi
+          sudo chown -R "$(id -u):$(id -g)" artifacts 2>/dev/null || true
+          echo "== Collected test-result files =="; find artifacts -type f | sort || true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ matrix.name }}
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30
