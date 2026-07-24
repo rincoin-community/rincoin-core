@@ -23,6 +23,24 @@ libargon2_a_SOURCES = \
     thread.c \
     argon2_dispatch.c
 
+# Headers required to build the library. These must be listed so that
+# `make dist`/`make distdir` ships them; otherwise an out-of-tree build from
+# the distribution tarball fails with "core.h: No such file or directory".
+noinst_HEADERS = \
+    core.h \
+    encoding.h \
+    thread.h \
+    argon2_dispatch.h \
+    genkat.h \
+    include/argon2.h \
+    blake2/blake2.h \
+    blake2/blake2-impl.h \
+    blake2/blamka-round-ref.h \
+    blake2/blamka-round-opt.h \
+    blake2/blamka-round-ssse3.h \
+    blake2/blamka-round-avx2.h \
+    blake2/blamka-round-avx512.h
+
 # Base compiler flags
 AM_CFLAGS = -O2 -fPIC
 AM_CPPFLAGS = -I$(srcdir)/include -I$(srcdir)/blake2
