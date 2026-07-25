@@ -39,6 +39,10 @@ work only. Highlights so far:
   `rincoin-tx` with Rincoin addresses, dropped the stale Litecoin smoke
   benchmark from `make check`, and added UBSan suppressions for the intentional
   wrapping arithmetic in the crypto primitives.
+- **Fixed a signed-integer overflow in the MWEB fee calculation** (`CFeeRate`):
+  `mweb_weight * BASE_MWEB_FEE` now saturates instead of overflowing on
+  pathological weights. Caught by UBSan; the result is unchanged for any valid
+  transaction (real MWEB weights are far below the saturation bound).
 - **Local build helpers (developer tooling, not shipped):**
   `contrib/build-windows-local.ps1` (Docker + MinGW cross-build on Windows) and
   `contrib/build-linux-local.sh` (native, ccache-accelerated). Both are
