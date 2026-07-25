@@ -58,7 +58,7 @@ FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
 RUN apt-get update && apt-get install -y \
       build-essential libtool autotools-dev automake pkg-config bsdmainutils \
-      python3 python3-zmq ccache rsync git ca-certificates \
+      python3 python3-zmq ccache rsync git ca-certificates dos2unix \
       clang llvm \
       qtbase5-dev qttools5-dev-tools libevent-dev \
       libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
@@ -73,6 +73,7 @@ MODE='check'
 info "== Building + testing (mode: $MODE) =="
 
 docker run --rm \
+    --security-opt seccomp=unconfined --cap-add SYS_PTRACE \
     -e "JOBS_ARG=$JOBS" -e "MODE=$MODE" \
     -v "${REPO_ROOT}:/src:ro" \
     -v "${BUILD_VOL}:/build" \
@@ -85,6 +86,14 @@ export CCACHE_DIR=/ccache
 mkdir -p /build/rincoin
 rsync -a --exclude=.git /src/ /build/rincoin/
 cd /build/rincoin
+
+# A Windows checkout may store scripts with CRLF; normalize build/autotools
+# files and the extensionless sanitizer suppression files to LF (-k keeps
+# mtimes so autotools does not needlessly re-run configure).
+find . -type f \( -name "*.sh" -o -name "*.ac" -o -name "*.am" -o -name "*.m4" \
+    -o -name "*.mk" -o -name "*.include" -o -name "*.py" -o -name "configure" \) \
+    -print0 | xargs -0 -r dos2unix -k -q 2>/dev/null || true
+dos2unix -k -q test/sanitizer_suppressions/* 2>/dev/null || true
 
 # Exact CI sanitizer runtime options (ci/test/04_install.sh).
 export ASAN_OPTIONS="detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1"
@@ -100,19 +109,24 @@ if [ ! -f config.status ]; then
       CPPFLAGS="-DARENA_DEBUG -DDEBUG_LOCKORDER" \
       --with-sanitizers=address,integer,undefined \
       --with-boost-process \
-      CC="ccache clang" CXX="ccache clang++"
+      CC=clang CXX=clang++
 fi
 
 make $JOBS_ARG
 
+# Disable ASLR for the sanitized binaries: the clang-10 ASan runtime on Ubuntu
+# 20.04 segfaults at startup under a high mmap_rnd_bits ASLR entropy (common on
+# Docker Desktop). Needs the relaxed seccomp profile set on docker run above.
+SETARCH="setarch $(uname -m) -R"
+
 if [ "$MODE" = "check" ]; then
-  make $JOBS_ARG check VERBOSE=1
+  $SETARCH make $JOBS_ARG check VERBOSE=1
 else
   SUITE="${MODE#suite:}"
   BIN="$(find src/test -maxdepth 1 -type f -executable -name "test_*" | head -n1)"
   [ -n "$BIN" ] || { echo "unit test binary not found"; exit 1; }
   echo ">> Running suite \"$SUITE\" from $BIN"
-  "$BIN" --catch_system_errors=no -l test_suite -t "$SUITE"
+  $SETARCH "$BIN" --catch_system_errors=no -l test_suite -t "$SUITE"
 fi
 ccache --show-stats | tail -n 5 || true
 '

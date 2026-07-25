@@ -72,7 +72,7 @@ FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
 RUN apt-get update && apt-get install -y \
       build-essential libtool autotools-dev automake pkg-config bsdmainutils \
-      python3 python3-zmq ccache rsync git ca-certificates \
+      python3 python3-zmq ccache rsync git ca-certificates dos2unix \
       clang llvm \
       qtbase5-dev qttools5-dev-tools libevent-dev \
       libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
@@ -101,6 +101,16 @@ mkdir -p /build/rincoin
 rsync -a --exclude=.git /src/ /build/rincoin/
 cd /build/rincoin
 
+# The Windows checkout may store some scripts with CRLF; normalize the build and
+# autotools files to LF so the Linux toolchain can execute them.
+find . -type f \( -name '*.sh' -o -name '*.ac' -o -name '*.am' -o -name '*.m4' \
+    -o -name '*.mk' -o -name '*.include' -o -name '*.py' -o -name 'configure' \) \
+    -print0 | xargs -0 -r dos2unix -k -q 2>/dev/null || true
+# Sanitizer suppression files are extensionless and read by ASan/UBSan, which
+# reject CRLF ("failed to parse suppressions"); normalize them too. -k keeps the
+# original mtime so autotools does not re-run configure on every invocation.
+dos2unix -k -q test/sanitizer_suppressions/* 2>/dev/null || true
+
 # Exact CI sanitizer runtime options (ci/test/04_install.sh).
 export ASAN_OPTIONS="detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1"
 export LSAN_OPTIONS="suppressions=$PWD/test/sanitizer_suppressions/lsan"
@@ -116,30 +126,42 @@ if [ ! -f config.status ]; then
       CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER' \
       --with-sanitizers=address,integer,undefined \
       --with-boost-process \
-      CC="ccache clang" CXX="ccache clang++"
+      CC=clang CXX=clang++
 fi
 
 make $JOBS_ARG
 
+# Disable ASLR for the test binaries: the clang-10 ASan runtime on Ubuntu 20.04
+# segfaults at startup under Docker Desktop's high mmap_rnd_bits entropy. This
+# needs the relaxed seccomp profile (for the personality() syscall) set on the
+# docker run above.
+SETARCH="setarch $(uname -m) -R"
+
 if [ "$MODE" = "check" ]; then
-  make $JOBS_ARG check VERBOSE=1
+  $SETARCH make $JOBS_ARG check VERBOSE=1
 else
   SUITE="${MODE#suite:}"
   BIN="$(find src/test -maxdepth 1 -type f -executable -name 'test_*' | head -n1)"
   [ -n "$BIN" ] || { echo "unit test binary not found"; exit 1; }
   echo ">> Running suite '$SUITE' from $BIN"
-  "$BIN" --catch_system_errors=no -l test_suite -t "$SUITE"
+  $SETARCH "$BIN" --catch_system_errors=no -l test_suite -t "$SUITE"
 fi
 ccache --show-stats | tail -n 5 || true
 '@
 $jobsArg = if ($Jobs -gt 0) { "-j$Jobs" } else { '' }
-$inner = $inner.Replace('__JOBS__', $jobsArg).Replace('__MODE__', $mode)
-
+$inner = ($inner.Replace('__JOBS__', $jobsArg).Replace('__MODE__', $mode)) -replace "`r", ''
+# Pass the script as base64 (pure ASCII: no BOM, no quote mangling, no CRLF),
+# then decode and run it inside the container.
+$b64 = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($inner))
+# ASan needs a relaxed seccomp profile + SYS_PTRACE under Docker Desktop, whose
+# kernel uses high ASLR entropy; otherwise the sanitized binary segfaults at
+# startup before any test runs.
 docker run --rm `
+    --security-opt seccomp=unconfined --cap-add SYS_PTRACE `
     -v "${RepoRoot}:/src:ro" `
     -v "${BuildVol}:/build" `
     -v "${CcacheVol}:/ccache" `
-    $Image bash -c $inner
+    $Image bash -c "echo $b64 | base64 -d | bash"
 $code = $LASTEXITCODE
 
 Info ''
