@@ -26,6 +26,9 @@ unsigned-integer-overflow:crypto/sha512.cpp
 # SHA256) intentionally rely on wrapping arithmetic; suppress across crypto/.
 unsigned-integer-overflow:crypto/*
 unsigned-integer-overflow:hash.cpp
+# Boost's hash_combine (container_hash) intentionally relies on wrapping
+# multiplication; exercised by libmw's MWEB aggregation code.
+unsigned-integer-overflow:*/boost/container_hash/hash.hpp
 unsigned-integer-overflow:leveldb/db/log_reader.cc
 unsigned-integer-overflow:leveldb/util/bloom.cc
 unsigned-integer-overflow:leveldb/util/crc32c.h

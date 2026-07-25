@@ -47,11 +47,17 @@ work only. Highlights so far:
   coins-view initialization reads the best block and coins DB, which require
   `cs_main`; the lock was not taken, so `DEBUG_LOCKORDER` (sanitizer) builds
   aborted during test setup. Behavior is unchanged in release builds.
+- **Further sanitizer fixes:** held `cs_wallet` in the MWEB stealth-address
+  unit test (matching production callers, so `DEBUG_LOCKORDER` no longer
+  aborts), and suppressed the intentional wrapping in Boost's `hash_combine`
+  used by libmw aggregation.
 - **Local build helpers (developer tooling, not shipped):**
   `contrib/build-windows-local.ps1` (Docker + MinGW cross-build on Windows) and
-  `contrib/build-linux-local.sh` (native, ccache-accelerated). Both are
-  explicitly for local testing only — unsigned and non-reproducible — and keep
-  all outputs and caches out of the repository.
+  `contrib/build-linux-local.sh` (native, ccache-accelerated), plus
+  `contrib/test-asan-local.ps1` / `.sh`, which reproduce the CI ASan/UBSan leg
+  in Docker (with a fast single-suite mode) so sanitizer issues can be caught
+  locally without commit/push. All are for local testing only and keep their
+  outputs and caches out of the repository.
 - **Docs:** added [`doc/rincoin-parameters.md`](rincoin-parameters.md) and this
   consolidated history.
 
