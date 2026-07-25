@@ -43,6 +43,10 @@ work only. Highlights so far:
   `mweb_weight * BASE_MWEB_FEE` now saturates instead of overflowing on
   pathological weights. Caught by UBSan; the result is unchanged for any valid
   transaction (real MWEB weights are far below the saturation bound).
+- **Fixed a missing `cs_main` lock in `CChainState::InitCoinsDB`.** The MWEB
+  coins-view initialization reads the best block and coins DB, which require
+  `cs_main`; the lock was not taken, so `DEBUG_LOCKORDER` (sanitizer) builds
+  aborted during test setup. Behavior is unchanged in release builds.
 - **Local build helpers (developer tooling, not shipped):**
   `contrib/build-windows-local.ps1` (Docker + MinGW cross-build on Windows) and
   `contrib/build-linux-local.sh` (native, ccache-accelerated). Both are
