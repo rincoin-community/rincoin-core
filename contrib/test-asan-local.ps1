@@ -144,8 +144,10 @@ if [ "$MODE" = "check" ]; then
   $SETARCH make $JOBS_ARG check VERBOSE=1
 elif [ "${MODE#func:}" != "$MODE" ]; then
   TEST="${MODE#func:}"
-  echo ">> Running functional test: $TEST"
-  $SETARCH python3 test/functional/test_runner.py "$TEST"
+  echo ">> Running functional test(s): $TEST"
+  # $TEST may be a space-separated list of test names; leave it unquoted so the
+  # test_runner receives each as a separate argument and prints a pass/fail matrix.
+  $SETARCH python3 test/functional/test_runner.py $TEST
 else
   SUITE="${MODE#suite:}"
   BIN="$(find src/test -maxdepth 1 -type f -executable -name 'test_*' | head -n1)"

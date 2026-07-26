@@ -761,9 +761,12 @@ class CBlockHeader:
             r += struct.pack("<I", self.nTime)
             r += struct.pack("<I", self.nBits)
             r += struct.pack("<I", self.nNonce)
-            self.sha256 = uint256_from_str(hash256(r))
-            self.hash = encode(hash256(r)[::-1], 'hex_codec').decode('ascii')
-            self.scrypt256 = uint256_from_str(rinhash.getPoWHash(r))
+            # On Rincoin the block id and the proof-of-work are both RinHash
+            # (unlike Litecoin, whose id is double-SHA256 and PoW is scrypt).
+            powhash = rinhash.getPoWHash(r)
+            self.sha256 = uint256_from_str(powhash)
+            self.hash = encode(powhash[::-1], 'hex_codec').decode('ascii')
+            self.scrypt256 = self.sha256
 
     def rehash(self):
         self.sha256 = None
