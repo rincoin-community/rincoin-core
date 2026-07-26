@@ -98,3 +98,17 @@ p2p_getdata.py
 rpc_estimatefee.py
 rpc_misc.py
 rpc_net.py
+p2p_addrv2_relay.py
+p2p_filter.py
+p2p_fingerprint.py
+p2p_getaddr_caching.py
+p2p_ibd_txrelay.py
+p2p_invalid_block.py
+p2p_invalid_locator.py
+p2p_invalid_messages.py
+p2p_invalid_tx.py
+p2p_leak_tx.py
+p2p_nobloomfilter_messages.py
+p2p_node_network_limited.py
+p2p_permissions.py
+p2p_tx_download.py
