@@ -105,7 +105,8 @@ rsync -a --exclude=.git /src/ /build/rincoin/
 # The test tree holds no build artifacts, so mirror it with --delete to drop any
 # stale scripts left behind by renames/removals in the source (the main rsync
 # above has no --delete because it must preserve the incremental build objects).
-rsync -a --delete /src/test/ /build/rincoin/test/
+# Keep configure-generated files that live under test/ (e.g. test/config.ini).
+rsync -a --delete --exclude=config.ini --exclude='__pycache__' /src/test/ /build/rincoin/test/
 cd /build/rincoin
 
 # The Windows checkout may store some scripts with CRLF; normalize the build and

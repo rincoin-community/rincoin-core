@@ -32,3 +32,8 @@ wallet_address_types.py
 wallet_basic.py
 wallet_hd.py
 wallet_labels.py
+mweb_mining.py
+mweb_p2p.py
+mweb_pegout_all.py
+mweb_reorg.py
+mweb_wallet_basic.py
