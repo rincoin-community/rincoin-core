@@ -186,4 +186,97 @@ BOOST_AUTO_TEST_CASE(ChainParams_SIGNET_sanity)
     sanity_check_chainparams(*m_node.args, CBaseChainParams::SIGNET);
 }
 
+namespace {
+// Build a fabricated chain of `count` headers, all with the same compact target
+// `bits`, spaced `spacing` seconds apart. Lets the Dark Gravity Wave retarget be
+// exercised with no real chain state; the tip is the last element and the vector
+// owns the CBlockIndex objects.
+std::vector<CBlockIndex> MakeDGWChain(int count, uint32_t bits, int64_t spacing)
+{
+    std::vector<CBlockIndex> blocks(count);
+    const int64_t start_time = 1600000000;
+    for (int i = 0; i < count; ++i) {
+        blocks[i].pprev = i ? &blocks[i - 1] : nullptr;
+        blocks[i].nHeight = i;
+        blocks[i].nTime = static_cast<uint32_t>(start_time + int64_t(i) * spacing);
+        blocks[i].nBits = bits;
+    }
+    return blocks;
+}
+} // namespace
+
+// Dark Gravity Wave is the active retarget algorithm but was previously
+// untested. Exercise its branches with a fabricated chain, forcing the DGW path
+// from height 0. Exact targets are fragile (DGW uses a non-standard running
+// average), so assert direction and the pow-limit clamp instead.
+BOOST_AUTO_TEST_CASE(dark_gravity_wave_retarget)
+{
+    Consensus::Params consensus = CreateChainParams(*m_node.args, CBaseChainParams::MAIN)->GetConsensus();
+    consensus.DGWHeight = 1; // force the DGW path for the whole fabricated chain
+
+    const arith_uint256 powLimit = UintToArith256(consensus.powLimit);
+    const uint32_t powLimitBits = powLimit.GetCompact();
+    // A target comfortably below the pow limit, so difficulty can move both ways.
+    arith_uint256 midTarget = powLimit;
+    midTarget >>= 4;
+    const uint32_t midBits = midTarget.GetCompact();
+    const CBlockHeader dummy; // unused by the DGW path
+    const int kBlocks = 30;   // > nPastBlocks (24)
+
+    auto target = [](uint32_t bits) { arith_uint256 t; t.SetCompact(bits); return t; };
+
+    // Fewer than 24 blocks of history: DGW returns the pow limit.
+    {
+        const auto chain = MakeDGWChain(10, midBits, consensus.nPowTargetSpacing);
+        BOOST_CHECK_EQUAL(GetNextWorkRequired(&chain.back(), &dummy, consensus), powLimitBits);
+    }
+
+    // Blocks far faster than target -> difficulty rises (target falls).
+    {
+        const auto chain = MakeDGWChain(kBlocks, midBits, 1);
+        const uint32_t next = GetNextWorkRequired(&chain.back(), &dummy, consensus);
+        BOOST_CHECK(target(next) < target(midBits));
+    }
+
+    // Blocks far slower than target -> difficulty falls (target rises), but never
+    // above the pow limit.
+    {
+        const auto chain = MakeDGWChain(kBlocks, midBits, 100000);
+        const uint32_t next = GetNextWorkRequired(&chain.back(), &dummy, consensus);
+        BOOST_CHECK(target(next) > target(midBits));
+        BOOST_CHECK(target(next) <= powLimit);
+    }
+
+    // Slow blocks already at the pow limit clamp exactly at the pow limit.
+    {
+        const auto chain = MakeDGWChain(kBlocks, powLimitBits, 100000);
+        BOOST_CHECK_EQUAL(GetNextWorkRequired(&chain.back(), &dummy, consensus), powLimitBits);
+    }
+}
+
+// Lock the mainnet network identity and genesis so accidental changes are caught.
+BOOST_AUTO_TEST_CASE(chainparams_main_identity)
+{
+    const auto params = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
+    const Consensus::Params& consensus = params->GetConsensus();
+
+    BOOST_CHECK_EQUAL(consensus.hashGenesisBlock.ToString(),
+                      "000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");
+    BOOST_CHECK_EQUAL(params->GenesisBlock().hashMerkleRoot.ToString(),
+                      "8590c08530d2ed422b726a938f07df8f380671569e04dcb556dcb9601c47cdad");
+
+    BOOST_CHECK_EQUAL(params->GetDefaultPort(), 9555);
+    const CMessageHeader::MessageStartChars& magic = params->MessageStart();
+    BOOST_CHECK_EQUAL(int(magic[0]), 0x52); // R
+    BOOST_CHECK_EQUAL(int(magic[1]), 0x49); // I
+    BOOST_CHECK_EQUAL(int(magic[2]), 0x4E); // N
+    BOOST_CHECK_EQUAL(int(magic[3]), 0x43); // C
+
+    BOOST_CHECK_EQUAL(int(params->Base58Prefix(CChainParams::PUBKEY_ADDRESS).at(0)), 60);
+    BOOST_CHECK_EQUAL(int(params->Base58Prefix(CChainParams::SCRIPT_ADDRESS).at(0)), 122);
+    BOOST_CHECK_EQUAL(int(params->Base58Prefix(CChainParams::SECRET_KEY).at(0)), 188);
+
+    BOOST_CHECK_EQUAL(consensus.nSubsidyHalvingInterval, 210000);
+}
+
 BOOST_AUTO_TEST_SUITE_END()
