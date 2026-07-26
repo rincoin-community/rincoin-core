@@ -129,7 +129,7 @@ ccache --zero-stats --max-size=2G >/dev/null 2>&1 || true
 if [ ! -f config.status ]; then
   # Exactly mirror ci/test/00_setup_env_native_asan.sh's BITCOIN_CONFIG.
   ./configure --disable-dependency-tracking \
-      --enable-zmq --with-incompatible-bdb --without-gui \
+      --enable-zmq --with-incompatible-bdb --with-sqlite=yes --without-gui \
       CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER' \
       --with-sanitizers=address,integer,undefined \
       --with-boost-process \
