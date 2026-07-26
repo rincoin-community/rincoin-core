@@ -28,6 +28,7 @@ rpc_psbt.py
 rpc_rawtransaction.py
 rpc_users.py
 rin_replacebyfee.py
+tool_wallet.py
 wallet_address_types.py
 wallet_basic.py
 wallet_hd.py

@@ -48,7 +48,7 @@ jobs:
           mkdir -p artifacts
           # automake test protocol: per-test result files and the unit-test
           # suite output (files may be owned by root from the CI container).
-          sudo find . -type f \( -name 'test-suite.log' -o -name '*.trs' -o -name 'test_litecoin.log' -o -name 'config.log' \) -exec cp --parents {} artifacts/ \; 2>/dev/null || true
+          sudo find . -type f \( -name 'test-suite.log' -o -name '*.trs' -o -name 'test_rincoin.log' -o -name 'config.log' \) -exec cp --parents {} artifacts/ \; 2>/dev/null || true
           # functional test runner logs (kept for failed tests)
           if [ -d ci/scratch/test_runner ]; then sudo cp -r ci/scratch/test_runner artifacts/functional-tests 2>/dev/null || true; fi
           # sanitizer findings, if any

@@ -162,5 +162,5 @@ dist/
 /tmp
 
 # test/bench binaries
-/src/test/test_litecoin
-/src/bench/bench_litecoin
+/src/test/test_rincoin
+/src/bench/bench_rincoin

@@ -38,13 +38,13 @@ fi
 
 if [ "$RUN_UNIT_TESTS_SEQUENTIAL" = "true" ]; then
   BEGIN_FOLD unit-tests-seq
-  DOCKER_EXEC ${TEST_RUNNER_ENV} DIR_UNIT_TEST_DATA=${DIR_UNIT_TEST_DATA} LD_LIBRARY_PATH=$DEPENDS_DIR/$HOST/lib "${BASE_BUILD_DIR}/rincoin-*/src/test/test_litecoin*" --catch_system_errors=no -l test_suite
+  DOCKER_EXEC ${TEST_RUNNER_ENV} DIR_UNIT_TEST_DATA=${DIR_UNIT_TEST_DATA} LD_LIBRARY_PATH=$DEPENDS_DIR/$HOST/lib "${BASE_BUILD_DIR}/rincoin-*/src/test/test_rincoin*" --catch_system_errors=no -l test_suite
   END_FOLD
 fi
 
 if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
   BEGIN_FOLD functional-tests
-  # Rincoin: while the functional suite is still being ported from Litecoin, only
+  # Rincoin: while the functional suite is still being ported from Rincoin, only
   # run the tests that have been verified to pass (see the allowlist file). This
   # keeps CI green while still gating on the adapted tests. Remove the file (or
   # the ${FUNCTIONAL_TEST_ALLOWLIST} expansion) to run the full suite.
