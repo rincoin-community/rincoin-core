@@ -8,9 +8,11 @@
 #include <consensus/params.h>
 #include <crypto/rinhash.h>
 #include <primitives/block.h>
+#include <streams.h>
 #include <test/util/setup_common.h>
 #include <uint256.h>
 #include <util/strencodings.h>
+#include <version.h>
 
 BOOST_FIXTURE_TEST_SUITE(rinhash_tests, BasicTestingSetup)
 
@@ -31,6 +33,15 @@ CBlockHeader MakeFixedHeader()
     return h;
 }
 
+// Deserialize an 80-byte block header from its hex encoding.
+CBlockHeader HeaderFromHex(const std::string& hex)
+{
+    CBlockHeader header;
+    CDataStream ss(ParseHex(hex), SER_NETWORK, PROTOCOL_VERSION);
+    ss >> header;
+    return header;
+}
+
 } // namespace
 
 BOOST_AUTO_TEST_CASE(rinhash_canonical_pow_vector)
@@ -38,6 +49,29 @@ BOOST_AUTO_TEST_CASE(rinhash_canonical_pow_vector)
     const uint256 expected = uint256S(
         "02b229adf0a67d35cfd176d5ee46b750ca698b97e1edc479787090856ca33222");
     BOOST_CHECK_EQUAL(RinHash(MakeFixedHeader()).GetHex(), expected.GetHex());
+}
+
+BOOST_AUTO_TEST_CASE(rinhash_mainnet_header_vectors)
+{
+    // Real main-network block headers (80 bytes each) with their known RinHash.
+    // On Rincoin GetHash() == RinHash(), so these are also the canonical block
+    // ids at heights 0 and 1, and block 1 links back to the genesis.
+    const CBlockHeader genesis = HeaderFromHex(
+        "0100000000000000000000000000000000000000000000000000000000000000"
+        "00000000adcd471c60b9dc56b5dc049e567106388fdf078f936a722b42edd230"
+        "85c0908500e8e467ffff001f28850000");
+    BOOST_CHECK_EQUAL(RinHash(genesis).GetHex(),
+        "000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");
+
+    const CBlockHeader block1 = HeaderFromHex(
+        "00000020dbc9a8c73baa8093e74eb368f8e36fba9a606fbd4e079ba83c61e4d6"
+        "bd960000902e3faad09b8f350a530702e126b19107be3218521dbf9eb5b394ca"
+        "40e11278d9ebe767ffff001fa1070100");
+    BOOST_CHECK_EQUAL(RinHash(block1).GetHex(),
+        "00002adfb206d5d942abc963b93fa2edb479eb7b6f589f5318ddda5cd732ec19");
+
+    BOOST_CHECK_EQUAL(block1.hashPrevBlock.GetHex(),
+        "000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");
 }
 
 BOOST_AUTO_TEST_CASE(rinhash_peer_proto_floor_params)

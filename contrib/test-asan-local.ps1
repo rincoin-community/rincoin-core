@@ -73,13 +73,14 @@ FROM ubuntu:20.04
 ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
 RUN apt-get update && apt-get install -y \
       build-essential libtool autotools-dev automake pkg-config bsdmainutils \
-      python3 python3-zmq ccache rsync git ca-certificates dos2unix \
+      python3 python3-pip python3-zmq ccache rsync git ca-certificates dos2unix \
       clang llvm \
       qtbase5-dev qttools5-dev-tools libevent-dev \
       libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
       libdb5.3++-dev libminiupnpc-dev libzmq3-dev libqrencode-dev libsqlite3-dev \
       libssl-dev libfmt-dev \
- && rm -rf /var/lib/apt/lists/*
+ && rm -rf /var/lib/apt/lists/* \
+ && pip3 install --no-cache-dir blake3 argon2-cffi
 WORKDIR /build
 '@
 $dockerfile | docker build -t $Image -f - $RepoRoot
