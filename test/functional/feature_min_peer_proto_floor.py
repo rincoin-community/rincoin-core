@@ -24,6 +24,7 @@ REGTEST_FLOOR_HEIGHT = 600
 REGTEST_FLOOR = 70018
 LOW_VERSION = 70017   # one below the floor
 HIGH_VERSION = 70018  # at the floor
+OBSOLETE_VERSION = 31799  # one below MIN_PEER_PROTO_VERSION (31800)
 
 
 class FixedVersionPeer(P2PInterface):
@@ -51,6 +52,14 @@ class MinPeerProtoFloorTest(BitcoinTestFramework):
 
     def run_test(self):
         node = self.nodes[0]
+
+        self.log.info("Obsolete version (< MIN_PEER_PROTO_VERSION) is always rejected")
+        # This rule is independent of the floor; check it while the floor is
+        # still dormant (height 0). The node drops the connection during the
+        # handshake, so do not wait for verack.
+        peer_obsolete = node.add_p2p_connection(FixedVersionPeer(OBSOLETE_VERSION),
+                                                wait_for_verack=False)
+        peer_obsolete.wait_for_disconnect()
 
         self.log.info("Below floor height: a low-version peer is accepted")
         node.add_p2p_connection(FixedVersionPeer(LOW_VERSION))

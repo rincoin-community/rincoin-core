@@ -37,6 +37,7 @@
 [CmdletBinding()]
 param(
     [string]$Suite,
+    [string]$Functional,
     [switch]$Check,
     [int]$Jobs = 0,
     [switch]$Clean
@@ -85,8 +86,9 @@ $dockerfile | docker build -t $Image -f - $RepoRoot
 if ($LASTEXITCODE -ne 0) { Fail 'Docker image build failed.' }
 
 # --- 4. Run build + tests --------------------------------------------------
-$runFull = (-not $Suite) -or $Check
-$mode = if ($runFull) { 'check' } else { "suite:$Suite" }
+$mode = if ($Functional) { "func:$Functional" }
+        elseif ($Suite -and -not $Check) { "suite:$Suite" }
+        else { 'check' }
 Info "== Building + testing (mode: $mode) =="
 
 $inner = @'
@@ -139,6 +141,10 @@ SETARCH="setarch $(uname -m) -R"
 
 if [ "$MODE" = "check" ]; then
   $SETARCH make $JOBS_ARG check VERBOSE=1
+elif [ "${MODE#func:}" != "$MODE" ]; then
+  TEST="${MODE#func:}"
+  echo ">> Running functional test: $TEST"
+  $SETARCH python3 test/functional/test_runner.py "$TEST"
 else
   SUITE="${MODE#suite:}"
   BIN="$(find src/test -maxdepth 1 -type f -executable -name 'test_*' | head -n1)"
