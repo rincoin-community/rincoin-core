@@ -120,4 +120,22 @@ BOOST_AUTO_TEST_CASE(subsidy_limit_test)
     BOOST_CHECK_EQUAL(nSum, CAmount{2099999997690000});
 }
 
+BOOST_AUTO_TEST_CASE(block_subsidy_mainnet_spot_check)
+{
+    const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
+    const Consensus::Params& c = chainParams->GetConsensus();
+
+    // Subsidies observed on the live main network via getblockstats, including
+    // the exact halving boundaries; a real-world anchor for GetBlockSubsidy().
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(1,      c), CAmount{5000000000});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(100000, c), CAmount{5000000000});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(209999, c), CAmount{5000000000});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(210000, c), CAmount{2500000000});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(419999, c), CAmount{2500000000});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(420000, c), CAmount{1250000000});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(629999, c), CAmount{1250000000});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(630000, c), CAmount{625000000});
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(672000, c), CAmount{625000000});
+}
+
 BOOST_AUTO_TEST_SUITE_END()
