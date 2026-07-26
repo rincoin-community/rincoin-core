@@ -2653,12 +2653,21 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
 
         // Apply the peer-protocol-version floor (if any). The floor uses the
         // active chain's current tip height, so it kicks in automatically once
-        // the chain reaches the configured floor height.
+        // the chain reaches the configured floor height. Read the tip under
+        // cs_main: the active chain is guarded by cs_main, and the lock
+        // establishes a happens-before with block connection on the validation
+        // thread. Without it, this message-handling thread has no guarantee of
+        // observing a tip that was just activated elsewhere and could miss the
+        // floor for a peer that connects exactly at the boundary height.
         {
             const Consensus::Params& consensusParams = Params().GetConsensus();
-            const int tip_height = ::ChainActive().Tip() ? ::ChainActive().Height() : 0;
             const int floor_height = consensusParams.nMinPeerProtoVersionFloorHeight;
             const int rin_floor = consensusParams.nMinPeerProtoVersionFloor;
+            int tip_height;
+            {
+                LOCK(cs_main);
+                tip_height = ::ChainActive().Tip() ? ::ChainActive().Height() : 0;
+            }
             if (floor_height > 0 && tip_height >= floor_height && rin_floor != 0 && nVersion < rin_floor) {
                 LogPrint(BCLog::NET, "peer=%d using version %i below RinHash floor %i; disconnecting\n",
                          pfrom.GetId(), nVersion, rin_floor);
