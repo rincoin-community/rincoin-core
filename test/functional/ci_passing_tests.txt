@@ -112,3 +112,17 @@ p2p_nobloomfilter_messages.py
 p2p_node_network_limited.py
 p2p_permissions.py
 p2p_tx_download.py
+feature_abortnode.py
+feature_loadblock.py
+feature_minchainwork.py
+interface_bitcoin_cli.py
+mempool_updatefromblock.py
+mining_getblocktemplate_longpoll.py
+p2p_eviction.py
+p2p_timeouts.py
+rpc_deprecated.py
+rpc_generate.py
+rpc_getdescriptorinfo.py
+rpc_getpeerinfo_deprecation.py
+rpc_help.py
+rpc_whitelist.py
