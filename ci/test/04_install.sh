@@ -67,6 +67,13 @@ elif [ "$CI_USE_APT_INSTALL" != "no" ]; then
   ${CI_RETRY_EXE} DOCKER_EXEC apt-get install --no-install-recommends --no-upgrade -y $PACKAGES $DOCKER_PACKAGES
 fi
 
+# Rincoin: the functional test framework computes the RinHash block id/PoW in
+# pure Python (test/functional/test_framework/rinhash.py), which needs blake3 and
+# argon2-cffi. Install them in the container whenever functional tests will run.
+if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
+  ${CI_RETRY_EXE} DOCKER_EXEC pip3 install blake3 argon2-cffi
+fi
+
 if [ "$CI_OS_NAME" == "macos" ]; then
   top -l 1 -s 0 | awk ' /PhysMem/ {print}'
   echo "Number of CPUs: $(sysctl -n hw.logicalcpu)"

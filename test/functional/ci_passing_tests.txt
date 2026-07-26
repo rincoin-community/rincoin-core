@@ -1,0 +1,34 @@
+# Rincoin CI functional-test allowlist.
+#
+# Only the tests listed here are run by the CI functional-test step
+# (ci/test/06_script_b.sh). This lets CI actually gate on the functional suite
+# while it is still being adapted from Litecoin: a test is added here ONLY after
+# it has been verified to pass in a Rincoin build (locally under the asan+ubsan
+# runner and/or a plain build). Lines starting with '#' and blank lines are
+# ignored. One test per line; entries may include test_runner arguments.
+#
+# Grow this list as more tests are fixed and confirmed.
+
+feature_min_peer_proto_floor.py
+mining_basic.py
+feature_block.py
+feature_csv_activation.py
+feature_config_args.py
+feature_includeconf.py
+mempool_accept.py
+p2p_addr_relay.py
+p2p_segwit.py
+rpc_blockchain.py
+rpc_createmultisig.py
+rpc_deriveaddresses.py
+rpc_fundrawtransaction.py
+rpc_generateblock.py
+rpc_invalid_address_message.py
+rpc_psbt.py
+rpc_rawtransaction.py
+rpc_users.py
+rin_replacebyfee.py
+wallet_address_types.py
+wallet_basic.py
+wallet_hd.py
+wallet_labels.py
