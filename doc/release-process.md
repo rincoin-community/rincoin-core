@@ -62,9 +62,9 @@ Check out the source code in the following directory hierarchy.
 
     cd /path/to/your/toplevel/build
     git clone https://github.com/litecoin-project/gitian.sigs.ltc.git
-    git clone https://github.com/litecoin-project/litecoin-detached-sigs.git
+    git clone https://github.com/Rin-coin/rincoin-detached-sigs.git
     git clone https://github.com/devrandom/gitian-builder.git
-    git clone https://github.com/litecoin-project/litecoin.git
+    git clone https://github.com/Rin-coin/rincoin.git
 
 ### Litecoin maintainers/release engineers, suggestion for writing release notes
 
@@ -138,7 +138,7 @@ NOTE: Offline builds must use the --url flag to ensure Gitian fetches only from 
 
 The gbuild invocations below <b>DO NOT DO THIS</b> by default.
 
-### Build and sign Litecoin Core for Linux, Windows, and macOS:
+### Build and sign Rincoin Core for Linux, Windows, and macOS:
 
     export GITIAN_THREADS=2
     export GITIAN_MEMORY=3000
@@ -215,7 +215,7 @@ Codesigner only: Sign the macOS binary:
 
     Notarize the disk image:
 
-    $   xcrun altool --notarize-app --primary-bundle-id "org.litecoin.Litecoin-Qt" -u "<apple-id-email>" -p "@keychain:<apple-id-notarisation-app-specific-password>" --asc-provider <team-id-shortcode> -t osx -f litecoin-${VERSION}-osx.dmg
+    $   xcrun altool --notarize-app --primary-bundle-id "org.litecoin.Rincoin-Qt" -u "<apple-id-email>" -p "@keychain:<apple-id-notarisation-app-specific-password>" --asc-provider <team-id-shortcode> -t osx -f litecoin-${VERSION}-osx.dmg
 
     The notarization takes a few minutes. Check the status:
 
@@ -227,7 +227,7 @@ Codesigner only: Sign the macOS binary:
 
     Staple the notarization ticket onto the application
 
-    $   xcrun stapler staple dist/Litecoin-Qt.app
+    $   xcrun stapler staple dist/Rincoin-Qt.app
 
 Codesigner only: Sign the windows binaries:
 
@@ -244,7 +244,7 @@ Codesigner only: Commit the detached codesign payloads:
     tar xf signature-osx.tar.gz
     tar xf signature-win.tar.gz
     #copy the notarization ticket to detached-sigs repo
-    cp dist/Litecoin-Qt.app/Contents/CodeResources osx/dist/Litecoin-Qt.app/Contents/
+    cp dist/Rincoin-Qt.app/Contents/CodeResources osx/dist/Rincoin-Qt.app/Contents/
     git add -A
     git commit -m "point to ${VERSION}"
     git tag -s v${VERSION} HEAD
@@ -253,7 +253,7 @@ Codesigner only: Commit the detached codesign payloads:
 Non-codesigners: wait for Windows/macOS detached signatures:
 
 - Once the Windows/macOS builds each have 3 matching signatures, they will be signed with their respective release keys.
-- Detached signatures will then be committed to the [litecoin-detached-sigs](https://github.com/litecoin-project/litecoin-detached-sigs) repository, which can be combined with the unsigned apps to create signed binaries.
+- Detached signatures will then be committed to the [litecoin-detached-sigs](https://github.com/Rin-coin/rincoin-detached-sigs) repository, which can be combined with the unsigned apps to create signed binaries.
 
 Create (and optionally verify) the signed macOS binary:
 

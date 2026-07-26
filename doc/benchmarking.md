@@ -1,7 +1,7 @@
 Benchmarking
 ============
 
-Litecoin Core has an internal benchmarking framework, with benchmarks
+Rincoin Core has an internal benchmarking framework, with benchmarks
 for cryptographic algorithms (e.g. SHA1, SHA256, SHA512, RIPEMD160, Poly1305, ChaCha20), rolling bloom filter, coins selection,
 thread queue, wallet balance.
 
@@ -15,7 +15,7 @@ benchmarking by unlatching log printers and lock analysis.
 
 After compiling litecoin-core, the benchmarks can be run with:
 
-    src/bench/bench_litecoin
+    src/bench/bench_rincoin
 
 The output will look similar to:
 ```
@@ -45,6 +45,6 @@ More benchmarks are needed for, in no particular order:
 Going Further
 --------------------
 
-To monitor Litecoin Core performance more in depth (like reindex or IBD): https://github.com/chaincodelabs/bitcoinperf
+To monitor Rincoin Core performance more in depth (like reindex or IBD): https://github.com/chaincodelabs/bitcoinperf
 
-To generate Flame Graphs for Litecoin Core: https://github.com/eklitzke/bitcoin/blob/flamegraphs/doc/flamegraphs.md
+To generate Flame Graphs for Rincoin Core: https://github.com/eklitzke/bitcoin/blob/flamegraphs/doc/flamegraphs.md
