@@ -8,7 +8,7 @@ from test_framework.test_framework import BitcoinTestFramework
 
 from test_framework.util import assert_raises_rpc_error
 
-BECH32_VALID = 'rltc1qhku5rq7jz8ulufe2y6fkcpnlvpsta7rqtc0r66'
+BECH32_VALID = 'rrin1qhku5rq7jz8ulufe2y6fkcpnlvpsta7rq39ap53'
 BECH32_INVALID_BECH32 = 'rltc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqdmchcc'
 BECH32_INVALID_BECH32M = 'rltc1qw508d6qejxtdg4y5r3zarvary0c5xw7k35mrzd'
 BECH32_INVALID_VERSION = 'rltc130xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqynjegk'
