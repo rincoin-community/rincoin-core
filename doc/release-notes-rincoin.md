@@ -47,6 +47,18 @@ work only. Highlights so far:
   coins-view initialization reads the best block and coins DB, which require
   `cs_main`; the lock was not taken, so `DEBUG_LOCKORDER` (sanitizer) builds
   aborted during test setup. Behavior is unchanged in release builds.
+- **Fixed a data race in the peer-protocol-version floor check.** The floor
+  read the active-chain tip (`::ChainActive().Tip()/.Height()`) in the `version`
+  message handler without holding `cs_main`, even though the active chain is
+  guarded by `cs_main` everywhere else (the same handler already takes the lock
+  a few lines later). Without it there was no happens-before with block
+  connection on the validation thread, so a peer connecting at the exact
+  per-network activation height could be evaluated against a stale tip and, on
+  some thread schedules, not be disconnected. The tip is now read under a short
+  `cs_main` lock. Impact is limited to peer-reachability policy at/after the
+  activation height; there is no effect on consensus, block validity, the UTXO
+  set, or funds. The race was introduced with the floor in `v1.1.0` and
+  surfaced as an intermittent functional-test hang under the CI scheduler.
 - **Further sanitizer fixes:** held `cs_wallet` in the MWEB stealth-address
   unit test (matching production callers, so `DEBUG_LOCKORDER` no longer
   aborts), and suppressed the intentional wrapping in Boost's `hash_combine`
