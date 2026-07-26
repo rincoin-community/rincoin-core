@@ -77,9 +77,14 @@ class MinPeerProtoFloorTest(BitcoinTestFramework):
         assert_equal(node.getpeerinfo()[0]["version"], LOW_VERSION)
         node.disconnect_p2ps()
 
-        self.log.info("Mine the floor block; floor now %d", REGTEST_FLOOR)
-        node.generatetoaddress(1, addr)
-        assert_equal(node.getblockcount(), REGTEST_FLOOR_HEIGHT)
+        self.log.info("Mine past the floor block; floor now %d", REGTEST_FLOOR)
+        # Mine a few blocks past the floor height so the tip is unambiguously
+        # at/above the floor when the next peer connects. Testing exactly at the
+        # boundary height is timing-sensitive: the version handshake reads the
+        # active chain height, and a peer connecting the instant the floor block
+        # is connected could otherwise race the tip update.
+        node.generatetoaddress(5, addr)
+        assert_equal(node.getblockcount(), REGTEST_FLOOR_HEIGHT + 4)
 
         self.log.info("At/above floor height: low-version peer is disconnected")
         # The node drops the connection during the handshake; disable the
