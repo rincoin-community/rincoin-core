@@ -102,6 +102,10 @@ export CCACHE_DIR=/ccache
 # Sync source into the persistent build volume (keep objects for incremental).
 mkdir -p /build/rincoin
 rsync -a --exclude=.git /src/ /build/rincoin/
+# The test tree holds no build artifacts, so mirror it with --delete to drop any
+# stale scripts left behind by renames/removals in the source (the main rsync
+# above has no --delete because it must preserve the incremental build objects).
+rsync -a --delete /src/test/ /build/rincoin/test/
 cd /build/rincoin
 
 # The Windows checkout may store some scripts with CRLF; normalize the build and
