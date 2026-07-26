@@ -76,3 +76,5 @@ rpc_preciousblock.py
 rpc_scantxoutset.py
 rpc_setban.py
 rpc_signrawtransaction.py
+rpc_signmessage.py
+rpc_getblockstats.py
