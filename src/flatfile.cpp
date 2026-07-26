@@ -10,6 +10,8 @@
 #include <tinyformat.h>
 #include <util/system.h>
 
+#include <memory>
+
 #ifndef _WIN32
 #include <fcntl.h>
 #include <unistd.h>
@@ -73,12 +75,14 @@ FILE* FlatFileSeq::OpenSequential(const FlatFilePos& pos)
         return nullptr;
     }
 
-    /* Set a larger buffer for better sequential read performance */
-    static thread_local char* seq_buffer = nullptr;
+    /* Set a larger buffer for better sequential read performance. The buffer is
+       kept per-thread and reused across files; owning it with unique_ptr ensures
+       it is released when the thread exits instead of being leaked. */
+    static thread_local std::unique_ptr<char[]> seq_buffer;
     if (!seq_buffer) {
-        seq_buffer = new char[SEQUENTIAL_READ_BUFFER_SIZE];
+        seq_buffer.reset(new char[SEQUENTIAL_READ_BUFFER_SIZE]);
     }
-    setvbuf(file, seq_buffer, _IOFBF, SEQUENTIAL_READ_BUFFER_SIZE);
+    setvbuf(file, seq_buffer.get(), _IOFBF, SEQUENTIAL_READ_BUFFER_SIZE);
 
 #ifdef __linux__
     /* Advise the kernel about sequential access pattern (Linux only; posix_fadvise
