@@ -59,7 +59,7 @@ if [ "$RUN_FUNCTIONAL_TESTS" = "true" ]; then
     # each entry (flag included) intact. Trailing whitespace/CR is trimmed first.
     FUNCTIONAL_TEST_ALLOWLIST=$(grep -vE '^[[:space:]]*(#|$)' "${BASE_ROOT_DIR}/test/functional/ci_passing_tests.txt" | sed -e "s/[[:space:]]*$//" -e "s/^/'/" -e "s/$/'/" | tr '\n' ' ')
   fi
-  DOCKER_EXEC LD_LIBRARY_PATH=$DEPENDS_DIR/$HOST/lib ${TEST_RUNNER_ENV} test/functional/test_runner.py --ci $MAKEJOBS --tmpdirprefix "${BASE_SCRATCH_DIR}/test_runner/" --ansi --combinedlogslen=4000 --timeout-factor=${TEST_RUNNER_TIMEOUT_FACTOR} ${TEST_RUNNER_EXTRA} ${FUNCTIONAL_TEST_ALLOWLIST} --quiet --failfast
+  DOCKER_EXEC LD_LIBRARY_PATH=$DEPENDS_DIR/$HOST/lib ${TEST_RUNNER_ENV} test/functional/test_runner.py --ci $MAKEJOBS --tmpdirprefix "${BASE_SCRATCH_DIR}/test_runner/" --ansi --combinedlogslen=1000000 --timeout-factor=${TEST_RUNNER_TIMEOUT_FACTOR} ${TEST_RUNNER_EXTRA} ${FUNCTIONAL_TEST_ALLOWLIST} --quiet --failfast
   END_FOLD
 fi
 

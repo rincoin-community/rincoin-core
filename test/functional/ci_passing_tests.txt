@@ -154,12 +154,14 @@ wallet_txn_clone.py
 wallet_txn_doublespend.py
 wallet_send.py
 rpc_dumptxoutset.py
-# feature_taproot.py: passes locally (asan, ~260s) but in native CI the final
-# sync_blocks (node0 validating node1's entire heavy taproot chain at once) blows
-# the 2400s timeout — RinHash PoW + thousands of Schnorr/script checks are far
-# costlier than upstream's sha256d, and CI's cores are slower. Taproot itself is
-# exercised by the unit tests and passes locally; re-add if the sync is made
-# incremental or the test's spend matrix is trimmed for Rincoin.
+# feature_taproot.py: passes locally (~132s, 4261 blocks, clean) but in native CI
+# the final block sync stalls and hits the 2400s timeout. Benchmarks show this is
+# NOT slowness (block rate 25-40 blk/s, header/DGW parallelism ~13s, RinHash is
+# cheap 64KiB) — node0 stops making progress entirely, i.e. a stall likely exposed
+# only by the plain (non-ASan) build. Kept here as a DIAGNOSTIC: combinedlogslen
+# was raised to 1000000 so the next failure captures node0's debug log at the
+# stall. Remove again once the stall is root-caused/fixed.
+feature_taproot.py
 feature_fee_estimation.py
 
 # Entries below carry test_runner arguments (e.g. a wallet-type flag). These are
