@@ -154,3 +154,5 @@ wallet_txn_clone.py
 wallet_txn_doublespend.py
 wallet_send.py
 rpc_dumptxoutset.py
+feature_taproot.py
+feature_fee_estimation.py
