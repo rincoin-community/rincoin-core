@@ -152,3 +152,4 @@ wallet_scriptaddress2.py
 wallet_startup.py
 wallet_txn_clone.py
 wallet_txn_doublespend.py
+wallet_send.py
