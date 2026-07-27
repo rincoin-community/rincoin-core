@@ -141,3 +141,14 @@ wallet_groups.py
 wallet_keypool.py
 wallet_keypool_topup.py
 wallet_listreceivedby.py
+wallet_importprunedfunds.py
+wallet_listsinceblock.py
+wallet_listtransactions.py
+wallet_listwallettransactions.py
+wallet_multiwallet.py
+wallet_reorgsrestore.py
+wallet_resendwallettransactions.py
+wallet_scriptaddress2.py
+wallet_startup.py
+wallet_txn_clone.py
+wallet_txn_doublespend.py
