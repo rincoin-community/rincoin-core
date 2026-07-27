@@ -150,9 +150,17 @@ if [ "$MODE" = "check" ]; then
 elif [ "${MODE#func:}" != "$MODE" ]; then
   TEST="${MODE#func:}"
   echo ">> Running functional test(s): $TEST"
-  # $TEST may be a space-separated list of test names; leave it unquoted so the
-  # test_runner receives each as a separate argument and prints a pass/fail matrix.
-  $SETARCH python3 test/functional/test_runner.py $TEST
+  # Two ways to specify tests:
+  #   * space-separated bare names (default) -> word-split, one arg each.
+  #   * ';'-separated entries -> each entry is passed as a single argument, so
+  #     an entry may carry test_runner flags, e.g.
+  #       -Functional "wallet_dump.py --legacy-wallet;wallet_importmulti.py --legacy-wallet"
+  if [ "${TEST#*;}" != "$TEST" ]; then
+    IFS=';' read -ra _tests <<< "$TEST"
+    $SETARCH python3 test/functional/test_runner.py "${_tests[@]}"
+  else
+    $SETARCH python3 test/functional/test_runner.py $TEST
+  fi
 else
   SUITE="${MODE#suite:}"
   BIN="$(find src/test -maxdepth 1 -type f -executable -name 'test_*' | head -n1)"

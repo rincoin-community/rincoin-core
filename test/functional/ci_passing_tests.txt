@@ -156,3 +156,19 @@ wallet_send.py
 rpc_dumptxoutset.py
 feature_taproot.py
 feature_fee_estimation.py
+
+# Entries below carry test_runner arguments (e.g. a wallet-type flag). These are
+# only reachable now that ci/test/06_script_b.sh single-quotes each allowlist
+# entry so the flag survives DOCKER_EXEC's inner `bash -c "$*"`. On Rincoin the
+# descriptor-wallet variants are unsupported, so only the --legacy-wallet forms
+# are listed. (rpc_bind.py --ipv6 is omitted: IPv6 loopback is unreliable in the
+# CI container, same reason feature_proxy's IPv6 node is deferred.)
+feature_segwit.py --legacy-wallet
+wallet_dump.py --legacy-wallet
+wallet_importmulti.py --legacy-wallet
+wallet_watchonly.py --legacy-wallet
+wallet_import_rescan.py --legacy-wallet
+wallet_import_with_label.py --legacy-wallet
+wallet_implicitsegwit.py --legacy-wallet
+rpc_bind.py --ipv4
+rpc_bind.py --nonloopback
