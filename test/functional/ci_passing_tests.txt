@@ -158,11 +158,20 @@ rpc_dumptxoutset.py
 # the final block sync stalls and hits the 2400s timeout. Benchmarks show this is
 # NOT slowness (block rate 25-40 blk/s, header/DGW parallelism ~13s, RinHash is
 # cheap 64KiB) — node0 stops making progress entirely, i.e. a stall likely exposed
-# only by the plain (non-ASan) build. Kept here as a DIAGNOSTIC: combinedlogslen
-# was raised to 1000000 so the next failure captures node0's debug log at the
-# stall. Remove again once the stall is root-caused/fixed.
+# only by the plain (non-ASan) build. Mitigation: the test now runs a third node
+# (a second block source for node0) so the block-download stall logic can drop a
+# stuck peer and finish the sync from the other node; --retry-failed=1 also guards
+# the gate. combinedlogslen is 1000000 so any future stall still captures node0's
+# debug log. Passes 3/3 locally on the plain build under the 2-core CI limits.
 feature_taproot.py
 feature_fee_estimation.py
+
+# feature_pruning.py: exercises block-file pruning. Needs MWEB disabled on the
+# regtest chain (it grows the chain past MWEB's height-432 activation with
+# hand-built blocks that carry no MWEB extension); the test now sets
+# vbparams=mweb:<far-future> on every node. Validated end-to-end on the plain
+# build (~3 min, Tests successful).
+feature_pruning.py
 
 # Entries below carry test_runner arguments (e.g. a wallet-type flag). These are
 # only reachable now that ci/test/06_script_b.sh single-quotes each allowlist
