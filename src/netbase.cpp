@@ -98,15 +98,20 @@ bool static LookupIntern(const std::string& name, std::vector<CNetAddr>& vIP, un
     aiHint.ai_protocol = IPPROTO_TCP;
     // We don't care which address family (IPv4 or IPv6) is returned
     aiHint.ai_family = AF_UNSPEC;
-    // If we allow lookups of hostnames, use the AI_ADDRCONFIG flag to only
-    // return addresses whose family we have an address configured for.
-    //
-    // If we don't allow lookups, then use the AI_NUMERICHOST flag for
-    // getaddrinfo to only decode numerical network addresses and suppress
-    // hostname lookups.
-    aiHint.ai_flags = fAllowLookup ? AI_ADDRCONFIG : AI_NUMERICHOST;
+    // First decode the name as a numeric address (AI_NUMERICHOST). This makes
+    // numeric literals such as "::1" resolve even on hosts that only have a
+    // loopback IPv6 address configured, where AI_ADDRCONFIG would otherwise
+    // suppress the IPv6 result and make the literal fail (e.g. -proxy=[::1]:port
+    // inside a container with no globally-configured IPv6). Only if that fails
+    // and hostname lookups are permitted do we retry with AI_ADDRCONFIG to
+    // perform an actual DNS lookup, preserving the previous behaviour.
+    aiHint.ai_flags = AI_NUMERICHOST;
     struct addrinfo *aiRes = nullptr;
     int nErr = getaddrinfo(name.c_str(), nullptr, &aiHint, &aiRes);
+    if (nErr != 0 && fAllowLookup) {
+        aiHint.ai_flags = AI_ADDRCONFIG;
+        nErr = getaddrinfo(name.c_str(), nullptr, &aiHint, &aiRes);
+    }
     if (nErr) {
         LogPrint(BCLog::NET, "getaddrinfo('%s') failed: %s (code %d)\n",
                  name, gai_strerror(nErr), nErr);
