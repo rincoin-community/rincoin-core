@@ -180,6 +180,17 @@ feature_pruning.py
 # which suppressed them on hosts with only loopback IPv6 (the CI container).
 feature_proxy.py
 
+# p2p_blockfilters.py: BIP157 compact-filter serving. Passes now that regtest
+# nPowTargetSpacing is 60s (was 3000s): the equivalent-PoW age of the height-1000
+# stale block no longer exceeds the 30-day stale-relay limit, so the node serves
+# (rather than disconnects on) a stale-chain getcfcheckpt.
+p2p_blockfilters.py
+
+# feature_dbcrash.py: chainstate crash/recovery stress test. Heavy (~12 min on the
+# plain build after halving the loop to 20 iterations); still reliably triggers
+# crash-during-flush and crash-during-recovery. Longest test in the gate.
+feature_dbcrash.py
+
 # Entries below carry test_runner arguments (e.g. a wallet-type flag). These are
 # only reachable now that ci/test/06_script_b.sh single-quotes each allowlist
 # entry so the flag survives DOCKER_EXEC's inner `bash -c "$*"`. On Rincoin the

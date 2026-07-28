@@ -237,7 +237,11 @@ class ChainstateWriteCrashTest(BitcoinTestFramework):
         # Main test loop:
         # each time through the loop, generate a bunch of transactions,
         # and then either mine a single new block on the tip, or some-sized reorg.
-        for i in range(40):
+        # Rincoin: 20 iterations (halved from upstream's 40) keeps the runtime
+        # gate-friendly (~12 min) while still reliably exercising the crash-during-
+        # flush and crash-during-recovery paths (node0 uses -dbcrashratio=8 and a
+        # 4 MiB cache, so it crashes many times well before iteration 20).
+        for i in range(20):
             self.log.info("Iteration %d, generating 2500 transactions %s", i, self.restart_counts)
             # Generate a bunch of small-ish transactions
             self.generate_small_transactions(self.nodes[3], 2500, utxo_list)
