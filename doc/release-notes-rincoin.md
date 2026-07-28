@@ -30,6 +30,15 @@ work only. Highlights so far:
 - **Network identity:** the internal IPv6 prefix is now derived from
   `SHA256("rincoin")` (`FD 2D DD 82 F5 C8`) instead of the inherited
   Litecoin-derived value, with matching `net`/`netbase` test vectors.
+- **Regtest block spacing corrected to match mainnet.** The regtest
+  `nPowTargetSpacing` was `60 * 50` (3000 s), an outlier introduced during the
+  fork setup; upstream convention (Bitcoin, Litecoin) is for regtest to use the
+  same spacing as mainnet. It is now `60` s, matching Rincoin mainnet. This is a
+  regtest-only change (mainnet/testnet consensus is unaffected; regtest already
+  disables retargeting and DGW). It also corrects a time-derived edge case where
+  the equivalent-proof-of-work age of a moderately deep stale block exceeded the
+  30-day stale-relay limit, which had prevented serving BIP157 compact-filter
+  checkpoints for stale blocks on regtest.
 - **Continuous integration:** a GitHub Actions workflow runs the upstream
   container-based CI harness with two legs — a plain unit+functional build and
   an ASan/UBSan build. The gate is headless (core unit tests + functional

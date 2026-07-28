@@ -432,7 +432,7 @@ public:
         consensus.nMinPeerProtoVersionFloorHeight = 600;
         consensus.nMinPeerProtoVersionFloor = 70018;
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
-        consensus.nPowTargetSpacing = 60 * 50;
+        consensus.nPowTargetSpacing = 60; // match mainnet spacing (regtest convention)
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
