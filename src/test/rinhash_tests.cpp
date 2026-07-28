@@ -86,8 +86,12 @@ BOOST_AUTO_TEST_CASE(rinhash_peer_proto_floor_params)
     for (const auto& c : cases) {
         SelectParams(c.net);
         const auto& consensus = Params().GetConsensus();
-        BOOST_CHECK_EQUAL(consensus.nMinPeerProtoVersionFloorHeight, c.height);
-        BOOST_CHECK_EQUAL(consensus.nMinPeerProtoVersionFloor,       c.floor);
+        // 70017 MWEB baseline holds from genesis up to just below the bump height.
+        BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(0), 70017);
+        BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(c.height - 1), 70017);
+        // The RinHash floor applies at and after the bump height.
+        BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(c.height), c.floor);
+        BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(c.height + 1), c.floor);
     }
 }
 

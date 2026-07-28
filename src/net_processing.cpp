@@ -2661,14 +2661,13 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
         // floor for a peer that connects exactly at the boundary height.
         {
             const Consensus::Params& consensusParams = Params().GetConsensus();
-            const int floor_height = consensusParams.nMinPeerProtoVersionFloorHeight;
-            const int rin_floor = consensusParams.nMinPeerProtoVersionFloor;
             int tip_height;
             {
                 LOCK(cs_main);
                 tip_height = ::ChainActive().Tip() ? ::ChainActive().Height() : 0;
             }
-            if (floor_height > 0 && tip_height >= floor_height && rin_floor != 0 && nVersion < rin_floor) {
+            const int rin_floor = consensusParams.MinPeerProtoVersionFloorAt(tip_height);
+            if (rin_floor != 0 && nVersion < rin_floor) {
                 LogPrint(BCLog::NET, "peer=%d using version %i below RinHash floor %i; disconnecting\n",
                          pfrom.GetId(), nVersion, rin_floor);
                 pfrom.fDisconnect = true;

@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Consensus {
@@ -106,13 +107,26 @@ struct Params {
     int DGWHeight;
 
     /**
-     * Peer-protocol-version floor. From nMinPeerProtoVersionFloorHeight onward,
-     * peers advertising a protocol version below nMinPeerProtoVersionFloor are
-     * disconnected during the version handshake. A height of 0 disables the
-     * floor. This is a networking policy and does not affect block validity.
+     * Peer-protocol-version floor schedule: a height-sorted list of
+     * {activation_height, min_version} pairs. From each activation_height
+     * onward, peers advertising a protocol version below the associated
+     * min_version are disconnected during the version handshake. This lets the
+     * floor be raised at successive heights as the protocol is bumped over time.
+     * An empty schedule disables the floor. This is a networking policy and does
+     * not affect block validity.
      */
-    int nMinPeerProtoVersionFloorHeight{0};
-    int nMinPeerProtoVersionFloor{0};
+    std::vector<std::pair<int, int>> vMinPeerProtoVersionFloors;
+
+    /** Protocol-version floor in effect at nHeight (0 if none). Entries must be
+     *  sorted ascending by activation height. */
+    int MinPeerProtoVersionFloorAt(int nHeight) const
+    {
+        int floor = 0;
+        for (const auto& entry : vMinPeerProtoVersionFloors) {
+            if (nHeight >= entry.first) floor = entry.second; else break;
+        }
+        return floor;
+    }
 };
 
 } // namespace Consensus

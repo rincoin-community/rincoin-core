@@ -39,6 +39,51 @@ work only. Highlights so far:
   the equivalent-proof-of-work age of a moderately deep stale block exceeded the
   30-day stale-relay limit, which had prevented serving BIP157 compact-filter
   checkpoints for stale blocks on regtest.
+- **Test-network parameter clean-up (testnet, previewnet, regtest).** Mainnet is
+  unchanged. On the non-canonical test networks:
+  - Fixed `defaultAssumeValid` on testnet and previewnet, which previously
+    pointed at the *mainnet* genesis hash (a copy-paste error); they now point at
+    their own genesis. Harmless but correct.
+  - Regtest `fRequireStandard` is now `false`, matching Bitcoin/Litecoin regtest
+    (non-standard transactions are relayed by default).
+  - Realigned the private-key (WIF) version bytes to the `PUBKEY_ADDRESS + 128`
+    convention: **testnet `SECRET_KEY` 209 → 193**, **previewnet 219 → 184**.
+
+    > ⚠️ **Compatibility (testnet/previewnet only, WIF export format):** this
+    > changes the version byte of exported *private keys* (`dumpprivkey`) on
+    > testnet and previewnet — old WIF strings (previous `8…` prefix) will no
+    > longer import into a node built after this change. **Addresses are
+    > unchanged** (`PUBKEY_ADDRESS` is still 65/56, i.e. `T…`/`P…`), and
+    > `wallet.dat` stores raw keys, so **existing wallets keep working** without
+    > action. Only if you copied a raw WIF *text* string out of an old
+    > testnet/previewnet node do you need to re-run `dumpprivkey` after
+    > upgrading. Mainnet WIF (`7…`, byte 188) is unaffected. There is no
+    > canonical testnet/previewnet yet, so real-world impact is expected to be
+    > nil.
+- **Taproot and MWEB now activate early on the test networks (testnet,
+  previewnet).** These deployments inherited Litecoin-scale activation heights
+  (~2.2M blocks) that, on Rincoin's faster chain, would not be reached on the
+  test networks for years — leaving both features effectively untestable there.
+  They now activate at low heights (testnet: after SegWit at 8064; previewnet:
+  after a lowered SegWit at 864), so the networks can exercise them end to end.
+  Previewnet additionally gets a shorter BIP9 window and lower BIP34/CSV/SegWit
+  heights so a fresh preview chain reaches every upgrade quickly.
+
+  > This is purely maintenance to make the test networks usable for validation.
+  > **Mainnet is not touched:** its Taproot/MWEB activation is already defined in
+  > the code and is unchanged by this. Activating early on the test networks does
+  > not advance, defer, or pre-empt the mainnet schedule in any way. Whether
+  > mainnet activation should ultimately be brought forward, deferred, or left at
+  > its already-defined height is a separate decision for the community, and that
+  > discussion is treated as such.
+- **Peer-protocol-version floor is now a height schedule.** The single
+  height/version floor is replaced by a sorted list of `{height, min_version}`
+  entries (`Consensus::Params::vMinPeerProtoVersionFloors`) so the floor can be
+  raised at successive heights as the protocol is bumped over time. Current
+  schedule requires `70017` (MWEB-capable) from genesis and `70018` (RinHash) at
+  each network's existing floor height. This is networking policy only and does
+  not affect block validity; effective behaviour is unchanged for the peers on
+  the network today (which already advertise `70017`+).
 - **Continuous integration:** a GitHub Actions workflow runs the upstream
   container-based CI harness with two legs — a plain unit+functional build and
   an ASan/UBSan build. The gate is headless (core unit tests + functional

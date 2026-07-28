@@ -4,14 +4,16 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test the peer-protocol-version floor.
 
-Consensus::Params exposes a per-network peer-protocol-version floor
-(nMinPeerProtoVersionFloorHeight / nMinPeerProtoVersionFloor). Before the
-active chain reaches the floor height, the floor is dormant and any peer that
-satisfies MIN_PEER_PROTO_VERSION (31800) is accepted. From the floor height
-onward, peers advertising a version below the configured floor must be
-disconnected during the version handshake.
+Consensus::Params exposes a per-network peer-protocol-version floor schedule
+(vMinPeerProtoVersionFloors: a sorted list of {height, min_version} pairs).
+The floor in effect at the tip height is the min_version of the highest entry
+whose height the chain has reached; peers advertising a lower version are
+disconnected during the version handshake (this is independent of the older
+MIN_PEER_PROTO_VERSION = 31800 obsolete-version cutoff).
 
-On regtest the floor activates at height 600 with floor 70018.
+On regtest the schedule is {{0, 70017}, {600, 70018}}: 70017 is required from
+genesis and the floor rises to 70018 at height 600. LOW_VERSION (70017) is
+therefore accepted below height 600 but rejected at/after it.
 """
 
 from test_framework.messages import msg_version

@@ -9,10 +9,10 @@
  * network protocol versioning
  */
 
-// Current protocol version. A per-network peer-protocol-version floor
-// (Consensus::Params::nMinPeerProtoVersionFloor / ...FloorHeight, configured in
-// chainparams.cpp) uses this value to fence off older nodes once the active
-// chain reaches the configured floor height.
+// Current protocol version. A per-network peer-protocol-version floor schedule
+// (Consensus::Params::vMinPeerProtoVersionFloors, configured in chainparams.cpp)
+// uses this value to fence off older nodes once the active chain reaches a
+// configured floor height.
 static const int PROTOCOL_VERSION = 70018;
 
 //! initial proto version, to be increased after version/verack negotiation
