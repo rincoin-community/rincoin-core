@@ -41,7 +41,11 @@ class MempoolAcceptanceTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.extra_args = [[
-            '-txindex', '-permitbaremultisig=0', '-mempoolreplacement=1'
+            # Rincoin regtest runs with fRequireStandard=false (the Litecoin/Bitcoin
+            # base convention of accepting non-standard txs on regtest). This test
+            # asserts specific standardness reject-reasons, so it must opt back into
+            # standardness enforcement explicitly, independent of the chain default.
+            '-txindex', '-permitbaremultisig=0', '-mempoolreplacement=1', '-acceptnonstdtxn=0'
         ]] * self.num_nodes
         self.supports_cli = False
 
