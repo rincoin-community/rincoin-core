@@ -5,21 +5,23 @@
 # Run the CI ASan/UBSan build + tests LOCALLY in Docker, reproducing the
 # GitHub Actions "asan+ubsan" leg so you can iterate without commit/push/wait.
 #
-# Mirrors ci/test/00_setup_env_native_asan.sh exactly: ubuntu:20.04, clang,
-# system libraries (NO_DEPENDS), CPPFLAGS='-DARENA_DEBUG -DDEBUG_LOCKORDER',
-# --with-sanitizers=address,integer,undefined, and the same ASAN/UBSAN/LSAN
-# runtime options + in-tree suppression files. Green here => should be green
-# on the asan+ubsan CI leg.
+# Thin wrapper: it only builds the shared image (contrib/ci-local.Dockerfile),
+# manages the cache volumes, and runs the shared container-side logic
+# (contrib/ci-local-runner.sh) with LEG=asan. All build/config/test logic lives
+# in that one script, so this wrapper and its .ps1 sibling can never drift.
+# Green here => should be green on the asan+ubsan CI leg.
 #
 # Requires Docker. The build tree, objects and ccache live in Docker named
 # volumes: first run is slow (~15-25 min), later runs are incremental/fast.
 # Nothing is written into the repo or git.
 #
 # Usage:
-#   contrib/test-asan-local.sh                         # full 'make check'
+#   contrib/test-asan-local.sh                              # full 'make check'
 #   contrib/test-asan-local.sh --suite scriptpubkeyman_tests   # one suite, fast
-#   contrib/test-asan-local.sh --jobs 8                # set parallelism
-#   contrib/test-asan-local.sh --clean                 # wipe caches, rebuild
+#   contrib/test-asan-local.sh --functional feature_min_peer_proto_floor.py
+#   contrib/test-asan-local.sh --jobs 8                     # set parallelism
+#   contrib/test-asan-local.sh --load-hogs 4               # CPU-saturate tests
+#   contrib/test-asan-local.sh --clean                     # wipe caches, rebuild
 
 set -euo pipefail
 
@@ -28,15 +30,21 @@ IMAGE='rincoin-local:asan'
 BUILD_VOL='rincoin_local_build_asan'
 CCACHE_VOL='rincoin_local_ccache_asan'
 SUITE=''
+FUNCTIONAL=''
+CHECK=0
 JOBS=''
+LOAD_HOGS=0
 DO_CLEAN=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --suite) SUITE="$2"; shift 2 ;;
-    --jobs)  JOBS="-j$2"; shift 2 ;;
-    --clean) DO_CLEAN=1; shift ;;
-    -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --suite)      SUITE="$2"; shift 2 ;;
+    --functional) FUNCTIONAL="$2"; shift 2 ;;
+    --check)      CHECK=1; shift ;;
+    --jobs)       JOBS="-j$2"; shift 2 ;;
+    --load-hogs)  LOAD_HOGS="$2"; shift 2 ;;
+    --clean)      DO_CLEAN=1; shift ;;
+    -h|--help)    grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 1 ;;
   esac
 done
@@ -52,84 +60,27 @@ if [ "$DO_CLEAN" -eq 1 ]; then
   docker volume rm "$BUILD_VOL" "$CCACHE_VOL" >/dev/null 2>&1 || true
 fi
 
-info '== Preparing ASan image (cached after first run) =='
-docker build -t "$IMAGE" -f - "$REPO_ROOT" <<'DOCKERFILE'
-FROM ubuntu:20.04
-ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
-RUN apt-get update && apt-get install -y \
-      build-essential libtool autotools-dev automake pkg-config bsdmainutils \
-      python3 python3-zmq ccache rsync git ca-certificates dos2unix \
-      clang llvm \
-      qtbase5-dev qttools5-dev-tools libevent-dev \
-      libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
-      libdb5.3++-dev libminiupnpc-dev libzmq3-dev libqrencode-dev libsqlite3-dev \
-      libssl-dev libfmt-dev \
- && rm -rf /var/lib/apt/lists/*
-WORKDIR /build
-DOCKERFILE
+info '== Preparing local image (single source of truth: contrib/ci-local.Dockerfile) =='
+docker build -t "$IMAGE" -f "$REPO_ROOT/contrib/ci-local.Dockerfile" "$REPO_ROOT"
 
-MODE='check'
-[ -n "$SUITE" ] && MODE="suite:$SUITE"
-info "== Building + testing (mode: $MODE) =="
+if [ -n "$FUNCTIONAL" ]; then
+  MODE="func:$FUNCTIONAL"
+elif [ -n "$SUITE" ] && [ "$CHECK" -eq 0 ]; then
+  MODE="suite:$SUITE"
+else
+  MODE='check'
+fi
+info "== Building + testing (LEG=asan, mode: $MODE) =="
 
+# ASan needs a relaxed seccomp profile + SYS_PTRACE (see ci-local-runner.sh).
+# Pipe the runner through `tr -d '\r'` so a CRLF checkout cannot break it.
 docker run --rm \
     --security-opt seccomp=unconfined --cap-add SYS_PTRACE \
-    -e "JOBS_ARG=$JOBS" -e "MODE=$MODE" \
+    -e "LEG=asan" -e "MODE=$MODE" -e "JOBS_ARG=$JOBS" -e "LOAD_HOGS=$LOAD_HOGS" \
     -v "${REPO_ROOT}:/src:ro" \
     -v "${BUILD_VOL}:/build" \
     -v "${CCACHE_VOL}:/ccache" \
-    "$IMAGE" bash -c '
-set -euo pipefail
-export CCACHE_DIR=/ccache
-[ -n "${JOBS_ARG}" ] || JOBS_ARG="-j$(nproc)"
-
-mkdir -p /build/rincoin
-rsync -a --exclude=.git /src/ /build/rincoin/
-cd /build/rincoin
-
-# A Windows checkout may store scripts with CRLF; normalize build/autotools
-# files and the extensionless sanitizer suppression files to LF (-k keeps
-# mtimes so autotools does not needlessly re-run configure).
-find . -type f \( -name "*.sh" -o -name "*.ac" -o -name "*.am" -o -name "*.m4" \
-    -o -name "*.mk" -o -name "*.include" -o -name "*.py" -o -name "configure" \) \
-    -print0 | xargs -0 -r dos2unix -k -q 2>/dev/null || true
-dos2unix -k -q test/sanitizer_suppressions/* 2>/dev/null || true
-
-# Exact CI sanitizer runtime options (ci/test/04_install.sh).
-export ASAN_OPTIONS="detect_stack_use_after_return=1:check_initialization_order=1:strict_init_order=1"
-export LSAN_OPTIONS="suppressions=$PWD/test/sanitizer_suppressions/lsan"
-export UBSAN_OPTIONS="suppressions=$PWD/test/sanitizer_suppressions/ubsan:print_stacktrace=1:halt_on_error=1:report_error_type=1"
-
-ccache --zero-stats --max-size=2G >/dev/null 2>&1 || true
-
-[ -x configure ] || ./autogen.sh
-if [ ! -f config.status ]; then
-  ./configure --disable-dependency-tracking \
-      --enable-zmq --with-incompatible-bdb --without-gui \
-      CPPFLAGS="-DARENA_DEBUG -DDEBUG_LOCKORDER" \
-      --with-sanitizers=address,integer,undefined \
-      --with-boost-process \
-      CC=clang CXX=clang++
-fi
-
-make $JOBS_ARG
-
-# Disable ASLR for the sanitized binaries: the clang-10 ASan runtime on Ubuntu
-# 20.04 segfaults at startup under a high mmap_rnd_bits ASLR entropy (common on
-# Docker Desktop). Needs the relaxed seccomp profile set on docker run above.
-SETARCH="setarch $(uname -m) -R"
-
-if [ "$MODE" = "check" ]; then
-  $SETARCH make $JOBS_ARG check VERBOSE=1
-else
-  SUITE="${MODE#suite:}"
-  BIN="$(find src/test -maxdepth 1 -type f -executable -name "test_*" | head -n1)"
-  [ -n "$BIN" ] || { echo "unit test binary not found"; exit 1; }
-  echo ">> Running suite \"$SUITE\" from $BIN"
-  $SETARCH "$BIN" --catch_system_errors=no -l test_suite -t "$SUITE"
-fi
-ccache --show-stats | tail -n 5 || true
-'
+    "$IMAGE" bash -c "tr -d '\r' < /src/contrib/ci-local-runner.sh | bash"
 
 info ''
 info '== PASSED (matches the asan+ubsan CI leg config) =='
