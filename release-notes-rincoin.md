@@ -1,5 +1,16 @@
 # Rincoin Core v1.1.0 Release Notes
 
+> **⚠️ Maintenance note — pre-release reconciliation pending.**
+> **Status: stale.** This detailed narrative predates later changes — notably the
+> removal of the RinHash JSON “activations table” and its associated RPC/codegen —
+> and also carries the separate v1.0.4 notes further below. It is retained
+> unchanged for now. The canonical, up-to-date release history is
+> [`doc/release-notes-rincoin.md`](doc/release-notes-rincoin.md).
+> **Action before the next release:** prune this v1.1.0 section to accurately
+> reflect which of its changes shipped versus were later rolled back, move the
+> v1.0.4 detail into the historical archive, and reconcile against the canonical
+> history.
+
 **Release Date:** *to be set on tag*
 **Base Commit:** `b52c87778` (master / v1.0.5 line)
 **Branch:** `release-v1.1.0-community-maintenance`

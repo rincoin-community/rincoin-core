@@ -1,3 +1,10 @@
+> **⚠️ Maintenance note — pre-release reconciliation pending.**
+> **Status: stale / not Rincoin.** This is an inherited upstream **Bitcoin Core
+> 0.21.2** release-notes template; it does not describe Rincoin. The canonical
+> Rincoin release history is [`release-notes-rincoin.md`](release-notes-rincoin.md).
+> **Action before the next release:** replace with a Rincoin-specific stub (or
+> remove it) pointing to the canonical history.
+
 0.21.2 Release Notes
 ====================
 

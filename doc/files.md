@@ -111,7 +111,7 @@ These subdirectories and files are no longer used by the Rincoin Core:
 
 Path           | Description | Repository notes
 ---------------|-------------|-----------------
-`blktree/`     | Blockchain index; replaced by `blocks/index/` in [0.8.0](https://github.com/Rin-coin/rincoin/blob/master/doc/release-notes/release-notes-0.8.0.md#improvements) | [PR #2231](https://github.com/bitcoin/bitcoin/pull/2231), [`8fdc94cc`](https://github.com/Rin-coin/rincoin/commit/8fdc94cc8f0341e96b1edb3a5b56811c0b20bd15)
+`blktree/`     | Blockchain index; replaced by `blocks/index/` in [0.8.0](https://github.com/Rin-coin/rincoin/blob/master/doc/bitcoin-release-notes/release-notes-0.8.0.md#improvements) | [PR #2231](https://github.com/bitcoin/bitcoin/pull/2231), [`8fdc94cc`](https://github.com/Rin-coin/rincoin/commit/8fdc94cc8f0341e96b1edb3a5b56811c0b20bd15)
 `coins/`       | Unspent transaction output database; replaced by `chainstate/` in 0.8.0 | [PR #2231](https://github.com/bitcoin/bitcoin/pull/2231), [`8fdc94cc`](https://github.com/Rin-coin/rincoin/commit/8fdc94cc8f0341e96b1edb3a5b56811c0b20bd15)
 `blkindex.dat` | Blockchain index BDB database; replaced by {`chainstate/`, `blocks/index/`, `blocks/revNNNNN.dat`<sup>[\[2\]](#note2)</sup>} in 0.8.0 | [PR #1677](https://github.com/bitcoin/bitcoin/pull/1677)
 `blk000?.dat`  | Block data (custom format, 2 GiB per file); replaced by `blocks/blkNNNNN.dat`<sup>[\[2\]](#note2)</sup> in 0.8.0 | [PR #1677](https://github.com/bitcoin/bitcoin/pull/1677)

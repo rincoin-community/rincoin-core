@@ -1,9 +1,16 @@
 # Rincoin Core — Release History
 
+> **Maintenance note — pre-release reconciliation pending.**
+> **Status: active — this is the canonical Rincoin release history.** A separate
+> detailed narrative at [`../release-notes-rincoin.md`](../release-notes-rincoin.md)
+> (repo root) is currently stale; the two will be reconciled before the next
+> release so this file remains the single source of truth.
+
 This is the consolidated release history for **Rincoin Core**. It complements,
-rather than replaces, the upstream Litecoin/Bitcoin per-version notes archived
-under [`doc/release-notes/`](release-notes/), which are kept for backward
-compatibility and to ease adoption of upstream changes.
+rather than replaces, the upstream per-version notes archived under
+[`doc/litecoin-release-notes/`](litecoin-release-notes/) and
+[`doc/bitcoin-release-notes/`](bitcoin-release-notes/), which are kept for
+historical reference and to ease adoption of upstream changes.
 
 Network and consensus constants referenced below are documented, with their
 derivations, in [`doc/rincoin-parameters.md`](rincoin-parameters.md).

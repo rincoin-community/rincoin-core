@@ -1,3 +1,9 @@
+> **⚠️ Maintenance note — pre-release reconciliation pending.**
+> **Status: stale.** This is the inherited upstream **Bitcoin** release process
+> and has not yet been adapted to Rincoin (it still references bitcoin/bitcoin,
+> upstream contacts, and upstream paths).
+> **Action before the next release:** adapt to Rincoin's actual release workflow.
+
 Release Process
 ====================
 

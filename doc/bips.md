@@ -1,3 +1,8 @@
+> **⚠️ Maintenance note — pre-release reconciliation pending.**
+> **Status: stale / to be removed.** This inherited BIP-support list tracks
+> **Bitcoin Core** and does not apply to Rincoin.
+> **Action before the next release:** remove this file.
+
 BIPs that are implemented by Bitcoin Core (up-to-date up to **v0.21.1**):
 
 * [`BIP 9`](https://github.com/bitcoin/bips/blob/master/bip-0009.mediawiki): The changes allowing multiple soft-forks to be deployed in parallel have been implemented since **v0.12.1**  ([PR #7575](https://github.com/bitcoin/bitcoin/pull/7575))
