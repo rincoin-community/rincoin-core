@@ -1204,8 +1204,14 @@ class TaprootTest(BitcoinTestFramework):
         # download from Node 1 stalls, the block-download stall logic can drop the
         # stalled peer and re-request the remaining chain from Node 2 instead of
         # dead-locking with no other peer to ask.
-        inactive_args = ["-par=1", "-dustrelayfee=0.00003", "-mintxfee=0.00001", "-vbparams=taproot:1:1"]
-        active_args = ["-par=1", "-dustrelayfee=0.00003", "-mintxfee=0.00001"]
+        # test_spenders submits deliberately non-standard (but consensus-valid)
+        # txs and asserts the mempool rejects them (-26). Those checks only run
+        # when the mempool enforces standardness, but Rincoin regtest defaults
+        # fRequireStandard=false. Opt back into standardness enforcement here
+        # (as mempool_accept.py does), otherwise the non-standard cases are
+        # accepted and the -26 assertion fails intermittently.
+        inactive_args = ["-par=1", "-dustrelayfee=0.00003", "-mintxfee=0.00001", "-acceptnonstdtxn=0", "-vbparams=taproot:1:1"]
+        active_args = ["-par=1", "-dustrelayfee=0.00003", "-mintxfee=0.00001", "-acceptnonstdtxn=0"]
         self.extra_args = [inactive_args, active_args, list(inactive_args)]
 
     def setup_network(self):
