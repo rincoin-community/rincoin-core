@@ -47,18 +47,23 @@ def wordreverse(in_buf):
     out_words.reverse()
     return b''.join(out_words)
 
+# Rincoin's block id is RinHash(header) (BLAKE3 -> Argon2d -> SHA3-256), not
+# Bitcoin's double-SHA256.  Mirrors src/crypto/rinhash.cpp.
+# Requires: pip install blake3 argon2-cffi
+import blake3 as _blake3_mod
+from argon2.low_level import hash_secret_raw as _argon2d_raw, Type as _Argon2Type
+
 def calc_hdr_hash(blk_hdr):
-    hash1 = hashlib.sha256()
-    hash1.update(blk_hdr)
-    hash1_o = hash1.digest()
-
-    hash2 = hashlib.sha256()
-    hash2.update(hash1_o)
-    hash2_o = hash2.digest()
-
-    return hash2_o
+    b3 = _blake3_mod.blake3(blk_hdr).digest()
+    a2 = _argon2d_raw(secret=b3, salt=b"RinCoinSalt", time_cost=2,
+                      memory_cost=64, parallelism=1, hash_len=32,
+                      type=_Argon2Type.D)
+    return hashlib.sha3_256(a2).digest()
 
 def calc_hash_str(blk_hdr):
+    # calc_hdr_hash() returns the 32-byte RinHash in internal (little-endian)
+    # order; bufreverse+wordreverse fully reverse it to the big-endian display
+    # hex that getblockhash (and thus the hashlist) emits.
     hash = calc_hdr_hash(blk_hdr)
     hash = bufreverse(hash)
     hash = wordreverse(hash)
@@ -232,7 +237,7 @@ class BlockDataCopier:
                     return
 
             inhdr = self.inF.read(8)
-            if (not inhdr or (inhdr[0] == "\0")):
+            if (not inhdr or (inhdr[0] == 0)):
                 self.inF.close()
                 self.inF = None
                 self.inFn = self.inFn + 1

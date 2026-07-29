@@ -30,6 +30,9 @@ from test_framework.util import (
 
 VERSIONBITS_TOP_BITS = 0x20000000
 VERSIONBITS_DEPLOYMENT_TESTDUMMY_BIT = 28
+# MWEB (DEPLOYMENT_MWEB) starts at genesis on regtest (nStartTime in 2020), so it
+# is always signalling in block templates alongside the testdummy deployment.
+VERSIONBITS_DEPLOYMENT_MWEB_BIT = 4
 
 
 def assert_template(node, block, expect, rehash=True):
@@ -65,7 +68,7 @@ class MiningTest(BitcoinTestFramework):
         assert_equal(536870912, self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)['version'])
         self.restart_node(0, extra_args=['-mocktime={}'.format(t)])
         self.connect_nodes(0, 1)
-        assert_equal(VERSIONBITS_TOP_BITS + (1 << VERSIONBITS_DEPLOYMENT_TESTDUMMY_BIT), self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)['version'])
+        assert_equal(VERSIONBITS_TOP_BITS + (1 << VERSIONBITS_DEPLOYMENT_TESTDUMMY_BIT) + (1 << VERSIONBITS_DEPLOYMENT_MWEB_BIT), self.nodes[0].getblocktemplate(NORMAL_GBT_REQUEST_PARAMS)['version'])
         self.restart_node(0)
         self.connect_nodes(0, 1)
 

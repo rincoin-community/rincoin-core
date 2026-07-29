@@ -9,6 +9,7 @@ from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE, ADDRESS_BCRT1_P2WS
 from test_framework.blocktools import create_block, create_coinbase, add_witness_commitment
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.messages import CTransaction, hash256, FromHex
+from test_framework import rinhash
 from test_framework.util import (
     assert_equal,
     assert_raises_rpc_error,
@@ -24,6 +25,10 @@ except ImportError:
 
 def hash256_reversed(byte_str):
     return hash256(byte_str)[::-1]
+
+def blockid_reversed(header):
+    # On Rincoin the block id is RinHash(header), not double-SHA256.
+    return rinhash.getPoWHash(header)[::-1]
 
 class ZMQSubscriber:
     def __init__(self, socket, topic):
@@ -131,7 +136,7 @@ class ZMQTest (BitcoinTestFramework):
 
             # Should receive the generated raw block.
             block = rawblock.receive()
-            assert_equal(genhashes[x], hash256_reversed(block[:80]).hex())
+            assert_equal(genhashes[x], blockid_reversed(block[:80]).hex())
 
             # Should receive the generated block hash.
             hash = hashblock.receive().hex()

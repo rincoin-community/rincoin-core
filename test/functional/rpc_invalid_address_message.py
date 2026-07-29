@@ -8,12 +8,14 @@ from test_framework.test_framework import BitcoinTestFramework
 
 from test_framework.util import assert_raises_rpc_error
 
-BECH32_VALID = 'rltc1qhku5rq7jz8ulufe2y6fkcpnlvpsta7rqtc0r66'
-BECH32_INVALID_BECH32 = 'rltc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqdmchcc'
-BECH32_INVALID_BECH32M = 'rltc1qw508d6qejxtdg4y5r3zarvary0c5xw7k35mrzd'
-BECH32_INVALID_VERSION = 'rltc130xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqynjegk'
-BECH32_INVALID_SIZE = 'rltc1s0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7v8n0nx0muaewav25430mtr'
-BECH32_INVALID_V0_SIZE = 'rltc1qw508d6qejxtdg4y5r3zarvary0c5xw7kqqq5k3my'
+BECH32_VALID = 'rrin1qhku5rq7jz8ulufe2y6fkcpnlvpsta7rq39ap53'
+# rrin-prefixed addresses whose final checksum character has been corrupted, so
+# they are rejected on the checksum rather than on the (correct) rrin HRP.
+BECH32_INVALID_BECH32 = 'rrin1qzyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3mcrurw'
+BECH32_INVALID_BECH32M = 'rrin1qyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3z59x6tm'
+BECH32_INVALID_VERSION = 'rrin1qxvenxvenxvenxvenxvenxvenxvenxvenxm387f'
+BECH32_INVALID_SIZE = 'rrin1qg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zq7tqhmh'
+BECH32_INVALID_V0_SIZE = 'rrin1q24242424242424242424242424242424t2w9d4'
 BECH32_INVALID_PREFIX = 'bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7k7grplx'
 
 BASE58_VALID = 'mipcBbFg9gMiCh81Kj8tqqdgoZub1ZJRfn'

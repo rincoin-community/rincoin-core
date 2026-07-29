@@ -47,6 +47,9 @@ BOOST_AUTO_TEST_CASE(StealthAddresses)
     NodeContext node;
     std::unique_ptr<interfaces::Chain> chain = interfaces::MakeChain(node);
     CWallet wallet(chain.get(), "", CreateMockWalletDatabase());
+    // cs_wallet must be held for SetHDSeed()/TopUp() and the IsMine/metadata
+    // queries below; production callers (wallet setup, RPC) always hold it.
+    LOCK(wallet.cs_wallet);
     wallet.SetMinVersion(WalletFeature::FEATURE_HD_SPLIT);
     LegacyScriptPubKeyMan& keyman = *wallet.GetOrCreateLegacyScriptPubKeyMan();
 

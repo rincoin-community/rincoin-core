@@ -118,6 +118,15 @@ static const unsigned int BLOCK_DOWNLOAD_WINDOW = 1024;
 static const int64_t BLOCK_DOWNLOAD_TIMEOUT_BASE = 1000000;
 /** Additional block download timeout per parallel downloading peer (i.e. 5 min) */
 static const int64_t BLOCK_DOWNLOAD_TIMEOUT_PER_PEER = 500000;
+/** Lower bound (in seconds) for the effective block interval used when computing the
+ *  block download timeout. The timeout scales with nPowTargetSpacing, but the wall-clock
+ *  cost of downloading and validating a block is independent of how often the network
+ *  produces blocks. On fast chains (short spacing) the raw interval-scaled timeout becomes
+ *  too tight and spuriously disconnects honest-but-slow peers (Rincoin's 60s spacing gives
+ *  only a 60s window). Never let the effective interval fall below this floor. Rincoin is a
+ *  Litecoin fork, so we adopt Litecoin's 150s block interval as the tolerance floor: a fast
+ *  chain keeps the same absolute block-download tolerance Litecoin already runs safely with. */
+static const int64_t BLOCK_DOWNLOAD_TIMEOUT_MIN_SPACING = 150;
 /** Maximum number of headers to announce when relaying blocks with headers message.*/
 static const unsigned int MAX_BLOCKS_TO_ANNOUNCE = 8;
 /** Maximum number of unconnecting headers announcements before DoS score */
@@ -2651,12 +2660,22 @@ void PeerManager::ProcessMessage(CNode& pfrom, const std::string& msg_type, CDat
             return;
         }
 
-        // Apply the RinHash overlay's min_peer_protocol_version floor (if any).
-        // The floor uses the active chain's current tip height, so it kicks
-        // in automatically once the chain reaches the activation height.
+        // Apply the peer-protocol-version floor (if any). The floor uses the
+        // active chain's current tip height, so it kicks in automatically once
+        // the chain reaches the configured floor height. Read the tip under
+        // cs_main: the active chain is guarded by cs_main, and the lock
+        // establishes a happens-before with block connection on the validation
+        // thread. Without it, this message-handling thread has no guarantee of
+        // observing a tip that was just activated elsewhere and could miss the
+        // floor for a peer that connects exactly at the boundary height.
         {
-            const int tip_height = ::ChainActive().Tip() ? ::ChainActive().Height() : 0;
-            const int rin_floor = Params().GetConsensus().GetRinHashEffectiveAt(tip_height).min_peer_protocol_version;
+            const Consensus::Params& consensusParams = Params().GetConsensus();
+            int tip_height;
+            {
+                LOCK(cs_main);
+                tip_height = ::ChainActive().Tip() ? ::ChainActive().Height() : 0;
+            }
+            const int rin_floor = consensusParams.MinPeerProtoVersionFloorAt(tip_height);
             if (rin_floor != 0 && nVersion < rin_floor) {
                 LogPrint(BCLog::NET, "peer=%d using version %i below RinHash floor %i; disconnecting\n",
                          pfrom.GetId(), nVersion, rin_floor);
@@ -4888,7 +4907,8 @@ bool PeerManager::SendMessages(CNode* pto)
         if (state.vBlocksInFlight.size() > 0) {
             QueuedBlock &queuedBlock = state.vBlocksInFlight.front();
             int nOtherPeersWithValidatedDownloads = nPeersWithValidatedDownloads - (state.nBlocksInFlightValidHeaders > 0);
-            if (count_microseconds(current_time) > state.nDownloadingSince + consensusParams.nPowTargetSpacing * (BLOCK_DOWNLOAD_TIMEOUT_BASE + BLOCK_DOWNLOAD_TIMEOUT_PER_PEER * nOtherPeersWithValidatedDownloads)) {
+            const int64_t effective_spacing = std::max<int64_t>(consensusParams.nPowTargetSpacing, BLOCK_DOWNLOAD_TIMEOUT_MIN_SPACING);
+            if (count_microseconds(current_time) > state.nDownloadingSince + effective_spacing * (BLOCK_DOWNLOAD_TIMEOUT_BASE + BLOCK_DOWNLOAD_TIMEOUT_PER_PEER * nOtherPeersWithValidatedDownloads)) {
                 LogPrintf("Timeout downloading block %s from peer=%d, disconnecting\n", queuedBlock.hash.ToString(), pto->GetId());
                 pto->fDisconnect = true;
                 return true;

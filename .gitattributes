@@ -1,1 +1,15 @@
 src/clientversion.cpp export-subst
+*.sh text eol=lf
+
+# Files that Linux build/test tooling parses directly and that must stay LF even
+# when checked out on Windows. This is the primary safeguard; the CI harness also
+# runs dos2unix on these as a belt-and-suspenders fallback.
+*.py         text eol=lf
+*.am         text eol=lf
+*.ac         text eol=lf
+*.m4         text eol=lf
+*.mk         text eol=lf
+*.include    text eol=lf
+# Sanitizer suppression files are extensionless and are read verbatim by
+# ASan/UBSan/LSan, which reject CRLF ("failed to parse suppressions").
+test/sanitizer_suppressions/* text eol=lf

@@ -15,6 +15,7 @@ from test_framework.messages import CBlock, ToHex
 from test_framework.script import CScript, OP_RETURN, OP_NOP
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
+    append_config,
     assert_equal,
     assert_greater_than,
     assert_raises_rpc_error,
@@ -109,6 +110,15 @@ class PruneTest(BitcoinTestFramework):
 
     def setup_nodes(self):
         self.add_nodes(self.num_nodes, self.extra_args)
+        # MWEB activates on the regtest chain around height 432 and from then on
+        # every block must carry the MWEB extension block (HogEx). This test grows
+        # the chain well past that height with hand-built blocks (mine_large_blocks)
+        # that have no MWEB extension, which the node would otherwise reject with
+        # "mweb-missing, MWEB activated but extension block not found". Disable MWEB
+        # for the whole test. Written to each node's config so it also applies to
+        # the manual-pruning restarts below, which pass their own extra_args.
+        for node in self.nodes:
+            append_config(node.datadir, ["vbparams=mweb:9999999999:9999999999"])
         self.start_nodes()
         self.import_deterministic_coinbase_privkeys()
 

@@ -40,7 +40,7 @@ class MWEBBasicTest(BitcoinTestFramework):
         self.sync_all()
 
         self.log.info("Check for MWEB UTXOs")
-        utxos = [x for x in self.nodes[0].listunspent() if x['address'].startswith('tmweb')]
+        utxos = [x for x in self.nodes[0].listunspent() if x['address'].startswith('rrmweb')]
         assert_equal(len(utxos), 2)
         utxos.sort(key=lambda x: x['amount'])
 
@@ -60,12 +60,12 @@ class MWEBBasicTest(BitcoinTestFramework):
         self.sync_all()
 
         self.log.info("Check MWEB coins are spent on node 0")
-        utxos = [x for x in self.nodes[0].listunspent() if x['address'].startswith('tmweb')]
+        utxos = [x for x in self.nodes[0].listunspent() if x['address'].startswith('rrmweb')]
         assert_equal(len(utxos), 2)
         assert sum(x['amount'] for x in utxos) < 45
 
         self.log.info("Check for MWEB UTXO on node 1")
-        utxos = [x for x in self.nodes[1].listunspent() if x['address'].startswith('tmweb')]
+        utxos = [x for x in self.nodes[1].listunspent() if x['address'].startswith('rrmweb')]
         assert_equal(len(utxos), 1)
         assert utxos[0]['amount'] == 5 and utxos[0]['address'] == addr1
 
@@ -76,7 +76,7 @@ class MWEBBasicTest(BitcoinTestFramework):
         self.sync_all()
 
         self.log.info("Check MWEB coins are spent on node 1")
-        utxos = [x for x in self.nodes[1].listunspent() if x['address'].startswith('tmweb')]
+        utxos = [x for x in self.nodes[1].listunspent() if x['address'].startswith('rrmweb')]
         assert_equal(len(utxos), 1)
         assert sum(x['amount'] for x in utxos) < 3
         self.log.info("UTXO amount: {}".format(utxos[0]['amount']))
@@ -94,7 +94,7 @@ class MWEBBasicTest(BitcoinTestFramework):
         self.sync_all()
 
         self.log.info("Check MWEB coins are spent on node 1")
-        utxos = [x for x in self.nodes[1].listunspent() if x['address'].startswith('tmweb')]
+        utxos = [x for x in self.nodes[1].listunspent() if x['address'].startswith('rrmweb')]
         assert_equal(len(utxos), 1)
         assert sum(x['amount'] for x in utxos) < 1
 

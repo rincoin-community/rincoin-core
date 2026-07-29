@@ -14,6 +14,11 @@
 /* Define this symbol to enable the ECDSA pubkey recovery module */
 #define ENABLE_MODULE_RECOVERY 1
 
+/* Define this symbol to enable the extrakeys module. Required by the
+   schnorrsig module (secp256k1_xonly_pubkey_load) and by Taproot support in
+   pubkey.cpp (secp256k1_xonly_pubkey_parse/_tweak_add_check). */
+#define ENABLE_MODULE_EXTRAKEYS 1
+
 /* Define this symbol if OpenSSL EC functions are available */
 #define ENABLE_OPENSSL_TESTS 1
 

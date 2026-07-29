@@ -1,15 +1,20 @@
-This directory contains integration tests that test litecoind and its
+This directory contains integration tests that test rincoind and its
 utilities in their entirety. It does not contain unit tests, which
 can be found in [/src/test](/src/test), [/src/wallet/test](/src/wallet/test),
 etc.
 
+> Rincoin-specific network and consensus values used by the tests (genesis
+> hashes, ports, address prefixes, the internal IPv6 prefix, RinHash
+> parameters, …) are documented — with how to re-derive them — in
+> [/doc/rincoin-parameters.md](/doc/rincoin-parameters.md).
+
 This directory contains the following sets of tests:
 
 - [functional](/test/functional) which test the functionality of
-litecoind and litecoin-qt by interacting with them through the RPC and P2P
+rincoind and rincoin-qt by interacting with them through the RPC and P2P
 interfaces.
-- [util](/test/util) which tests the litecoin utilities, currently only
-litecoin-tx.
+- [util](/test/util) which tests the rincoin utilities, currently only
+rincoin-tx.
 - [lint](/test/lint/) which perform various static analysis checks.
 
 The util tests are run as part of `make check` target. The functional
@@ -17,7 +22,7 @@ tests and lint scripts can be run as explained in the sections below.
 
 # Running tests locally
 
-Before tests can be run locally, Litecoin Core must be built.  See the [building instructions](/doc#building) for help.
+Before tests can be run locally, Rincoin Core must be built.  See the [building instructions](/doc#building) for help.
 
 
 ### Functional tests

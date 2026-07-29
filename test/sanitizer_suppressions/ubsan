@@ -22,7 +22,13 @@ unsigned-integer-overflow:crypto/ripemd160.cpp
 unsigned-integer-overflow:crypto/sha1.cpp
 unsigned-integer-overflow:crypto/sha256.cpp
 unsigned-integer-overflow:crypto/sha512.cpp
+# RinHash and the SIMD hash variants (BLAKE3, Argon2, SHA3, SHA-NI/SSE4/AVX2
+# SHA256) intentionally rely on wrapping arithmetic; suppress across crypto/.
+unsigned-integer-overflow:crypto/*
 unsigned-integer-overflow:hash.cpp
+# Boost's hash_combine (container_hash) intentionally relies on wrapping
+# multiplication; exercised by libmw's MWEB aggregation code.
+unsigned-integer-overflow:*/boost/container_hash/hash.hpp
 unsigned-integer-overflow:leveldb/db/log_reader.cc
 unsigned-integer-overflow:leveldb/util/bloom.cc
 unsigned-integer-overflow:leveldb/util/crc32c.h

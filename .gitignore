@@ -1,5 +1,9 @@
 *.tar.gz
 
+# Output of the local, testing-only build helpers
+# (contrib/build-windows-local.ps1, contrib/build-linux-local.sh)
+release-builds-local/
+
 *.exe
 *.pdb
 src/rincoin
@@ -158,5 +162,5 @@ dist/
 /tmp
 
 # test/bench binaries
-/src/test/test_litecoin
-/src/bench/bench_litecoin
+/src/test/test_rincoin
+/src/bench/bench_rincoin

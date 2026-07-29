@@ -6,6 +6,14 @@
 
 export LC_ALL=C.UTF-8
 
+# Git (>= 2.35.2, and security-backported builds such as Ubuntu 20.04's git)
+# refuses to operate on a repository owned by a different user. In the CI
+# container the bind-mounted work tree is owned by the host user while commands
+# run as root, so mark it safe before any git-invoking build step. In
+# particular `make distdir` runs `git archive` to embed clientversion/build
+# info and would otherwise fail with "detected dubious ownership".
+DOCKER_EXEC git config --global --add safe.directory "${BASE_ROOT_DIR}"
+
 BITCOIN_CONFIG_ALL="--disable-dependency-tracking --prefix=$DEPENDS_DIR/$HOST --bindir=$BASE_OUTDIR/bin --libdir=$BASE_OUTDIR/lib"
 DOCKER_EXEC "ccache --zero-stats --max-size=$CCACHE_SIZE"
 
@@ -17,22 +25,19 @@ else
 fi
 END_FOLD
 
-DOCKER_EXEC mkdir -p "${BASE_BUILD_DIR}"
-export P_CI_DIR="${BASE_BUILD_DIR}"
+export P_CI_DIR="${BASE_ROOT_DIR}"
 
 BEGIN_FOLD configure
-DOCKER_EXEC "${BASE_ROOT_DIR}/configure" --cache-file=config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG || ( (DOCKER_EXEC cat config.log) && false)
+DOCKER_EXEC ./configure --cache-file=config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG || ( (DOCKER_EXEC cat config.log) && false)
 END_FOLD
 
-BEGIN_FOLD distdir
-DOCKER_EXEC make distdir VERSION=$HOST
-END_FOLD
-
-export P_CI_DIR="${BASE_BUILD_DIR}/litecoin-$HOST"
-
-BEGIN_FOLD configure
-DOCKER_EXEC ./configure --cache-file=../config.cache $BITCOIN_CONFIG_ALL $BITCOIN_CONFIG || ( (DOCKER_EXEC cat config.log) && false)
-END_FOLD
+# Build in-tree (srcdir == builddir), mirroring how release binaries are built.
+# We do NOT build from a `make distdir` copy (the dist tarball is incomplete for
+# some vendored components: argon2, libmw and its bundled deps do not declare
+# all of their headers for `make dist`), nor as a separate VPATH tree (a few
+# fork-added libmw test-framework include paths are not written VPATH-relative,
+# e.g. -Ilibmw/test/framework/include). An in-tree build sidesteps both issues
+# and is the most representative of the actual release build.
 
 set -o errtrace
 trap 'DOCKER_EXEC "cat ${BASE_SCRATCH_DIR}/sanitizer-output/* 2> /dev/null"' ERR

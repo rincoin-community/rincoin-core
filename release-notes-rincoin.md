@@ -146,6 +146,22 @@ reverting an unintended asset change that landed in the v1.0.4 line.
 - `PROTOCOL_VERSION = 70018`. The bump is non-disruptive on its own; the
   associated peer floor is gated on the per-network activation-0 height.
 
+- **Block-download timeout floor (Litecoin parity).** The P2P block-download
+  timeout scales with the block interval (`nPowTargetSpacing`): a peer is
+  disconnected if a requested block stays in flight for roughly one block
+  interval. Rincoin's 60-second mainnet spacing made this window only ~60s
+  — far tighter than the ~150s Litecoin runs with and the ~600s of Bitcoin
+  — even though the wall-clock cost of downloading and validating a block is
+  independent of how often blocks are produced. Under load this spuriously
+  disconnected honest-but-slow peers, and on regtest it could deadlock a
+  heavy sync (both downloaders dropping their only block source). The
+  effective interval used for this timeout is now floored at Litecoin's
+  150-second spacing (`BLOCK_DOWNLOAD_TIMEOUT_MIN_SPACING`, `net_processing.cpp`),
+  so a fast chain keeps the same absolute tolerance Litecoin already runs
+  safely with. This is a networking-robustness change only; it does not
+  affect consensus, block validity, or mainnet chain state, and chains whose
+  spacing already meets or exceeds 150s are unaffected.
+
 ## Testing
 
 - **Unit tests** (`src/test/rinhash_tests.cpp`): canonical PoW vector,

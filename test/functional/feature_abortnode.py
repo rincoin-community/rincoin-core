@@ -10,8 +10,10 @@
 - Verify that bitcoind AbortNode's.
 """
 
+from test_framework.authproxy import JSONRPCException
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import get_datadir_path
+import http.client
 import os
 
 
@@ -36,8 +38,17 @@ class AbortNodeTest(BitcoinTestFramework):
         # attempt.
         self.nodes[1].generate(3)
         with self.nodes[0].assert_debug_log(["Failed to disconnect block"]):
-            self.connect_nodes(0, 1)
-            self.nodes[1].generate(1)
+            # node0 aborts the instant it fails to disconnect the block, which
+            # can happen while connect_nodes() is still polling getpeerinfo for
+            # the version handshake (or on the triggering generate). That abort
+            # is exactly what this test asserts, so tolerate node0 becoming
+            # unreachable here; the wait_until_stopped()/debug-log checks below
+            # still fail if node0 does *not* abort.
+            try:
+                self.connect_nodes(0, 1)
+                self.nodes[1].generate(1)
+            except (ConnectionError, http.client.HTTPException, JSONRPCException):
+                pass
 
             # Check that node0 aborted
             self.log.info("Waiting for crash")

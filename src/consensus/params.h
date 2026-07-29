@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Consensus {
@@ -106,76 +107,27 @@ struct Params {
     int DGWHeight;
 
     /**
-     * RinHash consensus parameters.
-     *
-     * The chain has always used RinHash for proof of work. Consensus is
-     * organised as an `init` (the values applicable from genesis) plus a
-     * height-ordered list of `activations` (overlays). At any height H, the
-     * effective parameters are obtained by starting from `init` and applying
-     * every activation whose activation_height <= H, last-write-wins per
-     * field.
-     *
-     * A rule is enforced iff its corresponding field is present (non-empty
-     * for byte vectors, non-zero for integers) in the effective parameters.
-     * In particular, mainnet's init has no coinbase marker, no fork tx
-     * version, and no extra peer protocol floor; those rules become active
-     * only when an activation introduces them.
+     * Peer-protocol-version floor schedule: a height-sorted list of
+     * {activation_height, min_version} pairs. From each activation_height
+     * onward, peers advertising a protocol version below the associated
+     * min_version are disconnected during the version handshake. This lets the
+     * floor be raised at successive heights as the protocol is bumped over time.
+     * An empty schedule disables the floor. This is a networking policy and does
+     * not affect block validity.
      */
-    struct Argon2dParams {
-        uint32_t    t_cost;
-        uint32_t    m_cost;
-        uint32_t    lanes;
-        std::string salt;
-    };
+    std::vector<std::pair<int, int>> vMinPeerProtoVersionFloors;
 
-    struct RinHashOverlay {
-        bool        has_t_cost{false};                     uint32_t                  t_cost{0};
-        bool        has_m_cost{false};                     uint32_t                  m_cost{0};
-        bool        has_lanes{false};                      uint32_t                  lanes{0};
-        bool        has_salt{false};                       std::string               salt;
-        bool        has_min_peer_protocol_version{false};  int                       min_peer_protocol_version{0};
-    };
-
-    struct RinHashActivation {
-        int            activation_height;
-        RinHashOverlay overlay;
-    };
-
-    /** Fully resolved RinHash consensus parameters at a particular height. */
-    struct RinHashEffective {
-        Argon2dParams              pow;
-        int                        min_peer_protocol_version{0}; //!< 0 => no extra floor
-    };
-
-    struct RinHashConsensusData {
-        RinHashOverlay                 init;        //!< activation_height implicitly 0
-        std::vector<RinHashActivation> activations; //!< strictly height-ascending
-    };
-
-    /** Per-network RinHash consensus table. */
-    RinHashConsensusData rinhash;
-
-    /** Resolve the effective RinHash parameters at the given block height. */
-    RinHashEffective GetRinHashEffectiveAt(int height) const;
-};
-
-inline Params::RinHashEffective Params::GetRinHashEffectiveAt(int height) const
-{
-    auto apply = [](RinHashEffective& e, const RinHashOverlay& o) {
-        if (o.has_t_cost)                    e.pow.t_cost = o.t_cost;
-        if (o.has_m_cost)                    e.pow.m_cost = o.m_cost;
-        if (o.has_lanes)                     e.pow.lanes  = o.lanes;
-        if (o.has_salt)                      e.pow.salt   = o.salt;
-        if (o.has_min_peer_protocol_version) e.min_peer_protocol_version  = o.min_peer_protocol_version;
-    };
-    RinHashEffective effective{};
-    apply(effective, rinhash.init);
-    for (const auto& activation : rinhash.activations) {
-        if (activation.activation_height > height) break;
-        apply(effective, activation.overlay);
+    /** Protocol-version floor in effect at nHeight (0 if none). Entries must be
+     *  sorted ascending by activation height. */
+    int MinPeerProtoVersionFloorAt(int nHeight) const
+    {
+        int floor = 0;
+        for (const auto& entry : vMinPeerProtoVersionFloors) {
+            if (nHeight >= entry.first) floor = entry.second; else break;
+        }
+        return floor;
     }
-    return effective;
-}
+};
 
 } // namespace Consensus
 

@@ -1196,10 +1196,38 @@ class TaprootTest(BitcoinTestFramework):
         self.skip_if_no_wallet()
 
     def set_test_params(self):
-        self.num_nodes = 2
+        self.num_nodes = 3
         self.setup_clean_chain = True
-        # Node 0 has Taproot inactive, Node 1 active.
-        self.extra_args = [["-par=1", "-dustrelayfee=0.00003", "-mintxfee=0.00001", "-vbparams=taproot:1:1"], ["-par=1", "-dustrelayfee=0.00003", "-mintxfee=0.00001"]]
+        # Node 0 and Node 2 have Taproot inactive, Node 1 active. Node 2 is a
+        # second copy of the pre-taproot node: it gives Node 0 an alternative
+        # source for the large post-activation block sync. If Node 0's block
+        # download from Node 1 stalls, the block-download stall logic can drop the
+        # stalled peer and re-request the remaining chain from Node 2 instead of
+        # dead-locking with no other peer to ask.
+        # test_spenders submits deliberately non-standard (but consensus-valid)
+        # txs and asserts the mempool rejects them (-26). Those checks only run
+        # when the mempool enforces standardness, but Rincoin regtest defaults
+        # fRequireStandard=false. Opt back into standardness enforcement here
+        # (as mempool_accept.py does), otherwise the non-standard cases are
+        # accepted and the -26 assertion fails intermittently.
+        inactive_args = ["-par=1", "-dustrelayfee=0.00003", "-mintxfee=0.00001", "-acceptnonstdtxn=0", "-vbparams=taproot:1:1"]
+        active_args = ["-par=1", "-dustrelayfee=0.00003", "-mintxfee=0.00001", "-acceptnonstdtxn=0"]
+        self.extra_args = [inactive_args, active_args, list(inactive_args)]
+
+    def setup_network(self):
+        self.setup_nodes()
+        # Mesh topology so Node 0 has two block sources during the heavy sync.
+        # connect_nodes(a, b) makes 'a' dial out to 'b', and a node prefers to
+        # download blocks from peers it dialed out to (fPreferredDownload), so:
+        #   - Node 2 dials Node 1  -> Node 2 syncs the heavy chain from Node 1
+        #   - Node 0 dials Node 1  -> Node 0's primary source
+        #   - Node 0 dials Node 2  -> Node 0's fallback source
+        # If Node 0's download from Node 1 stalls, the stall logic can drop the
+        # stuck peer and continue downloading the remaining chain from Node 2.
+        self.connect_nodes(2, 1)
+        self.connect_nodes(0, 1)
+        self.connect_nodes(0, 2)
+        self.sync_all()
 
     def block_submit(self, node, txs, msg, err_msg, cb_pubkey=None, fees=0, sigops_weight=0, witness=False, accept=False):
 

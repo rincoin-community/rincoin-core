@@ -16,6 +16,10 @@
 
 #define ENABLE_MODULE_SCHNORRSIG 1
 
+/* Define this symbol to enable the extrakeys module. Required by the
+   schnorrsig module (secp256k1_xonly_pubkey_load) and by Taproot support in
+   pubkey.cpp (secp256k1_xonly_pubkey_parse/_tweak_add_check). */
+#define ENABLE_MODULE_EXTRAKEYS 1
 /* Define this symbol to enable the Pedersen / zero knowledge bulletproof
    module */
 #define ENABLE_MODULE_BULLETPROOF 1

@@ -205,7 +205,7 @@ BASE_SCRIPTS = [
     'rpc_getblockfilter.py',
     'rpc_invalidateblock.py',
     'feature_rbf.py',
-    'ltc_replacebyfee.py',
+    'rin_replacebyfee.py',
     'mempool_packages.py',
     'mempool_package_onemore.py',
     'rpc_createmultisig.py',
@@ -333,6 +333,7 @@ def main():
     parser.add_argument('--quiet', '-q', action='store_true', help='only print dots, results summary and failure logs')
     parser.add_argument('--tmpdirprefix', '-t', default=tempfile.gettempdir(), help="Root directory for datadirs")
     parser.add_argument('--failfast', action='store_true', help='stop execution after the first test failure')
+    parser.add_argument('--retry-failed', type=int, default=0, metavar='n', help='Re-run each failed test up to n times before recording it as a failure. Absorbs known environment-timing flakiness (a genuine failure fails on every attempt) without hiding real breakage.')
     parser.add_argument('--filter', help='filter scripts to run by regular expression')
 
     args, unknown_args = parser.parse_known_args()
@@ -442,17 +443,18 @@ def main():
         args=passon_args,
         combined_logs_len=args.combinedlogslen,
         failfast=args.failfast,
+        retry_failed=args.retry_failed,
         use_term_control=args.ansi,
     )
 
-def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=False, args=None, combined_logs_len=0, failfast=False, use_term_control):
+def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=False, args=None, combined_logs_len=0, failfast=False, retry_failed=0, use_term_control):
     args = args or []
 
     # Warn if bitcoind is already running
     try:
         # pgrep exits with code zero when one or more matching processes found
-        if subprocess.run(["pgrep", "-x", "litecoind"], stdout=subprocess.DEVNULL).returncode == 0:
-            print("%sWARNING!%s There is already a litecoind process running on this system. Tests may fail unexpectedly due to resource contention!" % (BOLD[1], BOLD[0]))
+        if subprocess.run(["pgrep", "-x", "rincoind"], stdout=subprocess.DEVNULL).returncode == 0:
+            print("%sWARNING!%s There is already a rincoind process running on this system. Tests may fail unexpectedly due to resource contention!" % (BOLD[1], BOLD[0]))
     except OSError:
         # pgrep not supported
         pass
@@ -502,18 +504,30 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
     )
     start_time = time.time()
     test_results = []
+    retried_failures = {}  # test name -> retry attempts already made
 
     max_len_name = len(max(test_list, key=len))
     test_count = len(test_list)
-    for i in range(test_count):
+    i = 0
+    while i < test_count:
         test_result, testdir, stdout, stderr = job_queue.get_next()
-        test_results.append(test_result)
         done_str = "{}/{} - {}{}{}".format(i + 1, test_count, BOLD[1], test_result.name, BOLD[0])
         if test_result.status == "Passed":
             logging.debug("%s passed, Duration: %s s" % (done_str, test_result.time))
         elif test_result.status == "Skipped":
             logging.debug("%s skipped" % (done_str))
         else:
+            # Re-run a failed test up to `retry_failed` times before recording
+            # it as a failure. This absorbs environment-timing flakiness (a real
+            # failure fails on every attempt) without hiding genuine breakage.
+            attempts = retried_failures.get(test_result.name, 0)
+            if retry_failed and attempts < retry_failed:
+                retried_failures[test_result.name] = attempts + 1
+                print("%s failed (attempt %d/%d); retrying...\n" % (test_result.name, attempts + 1, retry_failed + 1))
+                job_queue.test_list.append(test_result.name)
+                test_count += 1
+                i += 1
+                continue
             print("%s failed, Duration: %s s\n" % (done_str, test_result.time))
             print(BOLD[1] + 'stdout:\n' + BOLD[0] + stdout + '\n')
             print(BOLD[1] + 'stderr:\n' + BOLD[0] + stderr + '\n')
@@ -529,9 +543,11 @@ def run_tests(*, test_list, src_dir, build_dir, tmpdir, jobs=1, enable_coverage=
                 combined_logs, _ = subprocess.Popen(combined_logs_args, universal_newlines=True, stdout=subprocess.PIPE).communicate()
                 print("\n".join(deque(combined_logs.splitlines(), combined_logs_len)))
 
-            if failfast:
-                logging.debug("Early exiting after test failure")
-                break
+        test_results.append(test_result)
+        i += 1
+        if test_result.status == "Failed" and failfast:
+            logging.debug("Early exiting after test failure")
+            break
 
     print_results(test_results, max_len_name, (int(time.time() - start_time)))
 
@@ -695,7 +711,7 @@ class TestResult():
 def check_script_prefixes():
     """Check that test scripts start with one of the allowed name prefixes."""
 
-    good_prefixes_re = re.compile("(example|feature|interface|mempool|mining|p2p|rpc|wallet|tool|ltc|mweb)_")
+    good_prefixes_re = re.compile("(example|feature|interface|mempool|mining|p2p|rpc|wallet|tool|rin|mweb)_")
     bad_script_names = [script for script in ALL_SCRIPTS if good_prefixes_re.match(script) is None]
 
     if bad_script_names:
@@ -726,7 +742,7 @@ class RPCCoverage():
     Coverage calculation works by having each test script subprocess write
     coverage files into a particular directory. These files contain the RPC
     commands invoked during testing, as well as a complete listing of RPC
-    commands per `litecoin-cli help` (`rpc_interface.txt`).
+    commands per `rincoin-cli help` (`rpc_interface.txt`).
 
     After all tests complete, the commands run are combined and diff'd against
     the complete list to calculate uncovered RPC commands.

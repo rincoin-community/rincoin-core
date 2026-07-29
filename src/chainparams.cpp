@@ -15,6 +15,7 @@
 #include <versionbitsinfo.h>
 
 #include <assert.h>
+#include <stdexcept>
 
 #include <boost/algorithm/string/classification.hpp>
 #include <boost/algorithm/string/split.hpp>
@@ -22,34 +23,7 @@
 #include <arith_uint256.h>
 #include <util/system.h>  // for LogPrintf, if you want
 #include <consensus/params.h>  // for Consensus::Params
-#include <consensus/rinhash_consensus_data.h>
 #include "crypto/rinhash.h"  // Change the path according to the location of RinHash
-
-namespace {
-//! Copy generator output (rinhash_consensus_data.h) into a Consensus::Params overlay.
-inline Consensus::Params::RinHashOverlay ToOverlay(const Consensus::RinHashGen::GeneratedOverlay& g)
-{
-    Consensus::Params::RinHashOverlay o;
-    o.has_t_cost                    = g.has_t_cost;                    o.t_cost                    = g.t_cost;
-    o.has_m_cost                    = g.has_m_cost;                    o.m_cost                    = g.m_cost;
-    o.has_lanes                     = g.has_lanes;                     o.lanes                     = g.lanes;
-    o.has_salt                      = g.has_salt;                      o.salt                      = g.salt;
-    o.has_min_peer_protocol_version = g.has_min_peer_protocol_version; o.min_peer_protocol_version = g.min_peer_protocol_version;
-    return o;
-}
-
-inline void ApplyRinHashConsensus(Consensus::Params& consensus,
-                                  const Consensus::RinHashGen::GeneratedNetwork& gen)
-{
-    consensus.rinhash.init = ToOverlay(gen.init);
-    consensus.rinhash.activations.clear();
-    consensus.rinhash.activations.reserve(gen.activations.size());
-    for (const auto& a : gen.activations) {
-        consensus.rinhash.activations.push_back(
-            Consensus::Params::RinHashActivation{a.activation_height, ToOverlay(a)});
-    }
-}
-} // namespace
 
 static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesisOutputScript, uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
 {
@@ -139,7 +113,11 @@ public:
         consensus.nRuleChangeActivationThreshold = 6048; // 75% of 8064
         consensus.nMinerConfirmationWindow = 8064; // nPowTargetTimespan / nPowTargetSpacing * 4
         consensus.DGWHeight = 30000; // Dark Gravity Wave (DGW) difficulty adjustment algorithm
-        ApplyRinHashConsensus(consensus, Consensus::RinHashGen::GetMainnetData());
+        // Peer-protocol-version floor schedule (height -> min version): 70017 is
+        // the MWEB-capable baseline required from genesis (symbolic: the network
+        // already runs >= 70017); 70018 (RinHash-aware) is required from the
+        // fourth-halving boundary onward.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {840000, 70018}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -184,9 +162,8 @@ public:
         // service bits we want, but we should get them updated to support all service bits wanted by any
         // release ASAP to avoid it where possible.
         
-        vSeeds.emplace_back("seed.rincoin.net");  // official DNS seeder 1
-        vSeeds.emplace_back("seed.rincoin.org");  // official DNS seeder 2
-
+        vSeeds.emplace_back("seed.rincoin.tech");  // Community Forge DNS seeder
+        
         base58Prefixes[PUBKEY_ADDRESS] = {60};  // "R..."
         base58Prefixes[SCRIPT_ADDRESS] = {122}; // "r..."
         base58Prefixes[SCRIPT_ADDRESS2] = std::vector<unsigned char>(1,50);
@@ -367,23 +344,26 @@ public:
         consensus.nRuleChangeActivationThreshold = 1512; // 75% for testchains
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.DGWHeight = 100; // Dark Gravity Wave (DGW) difficulty adjustment algorithm
-        ApplyRinHashConsensus(consensus, Consensus::RinHashGen::GetTestnetData());
+        // Peer-protocol-version floor schedule (height -> min version): 70017
+        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 4200.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {4200, 70018}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
-        // Deployment of Taproot (BIPs 340-342)
+        // Deployment of Taproot (BIPs 340-342) — after SegWit (6048); height-based
+        // deployments flag-day activate by nTimeoutHeight even without signaling.
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight = 2225664; // March 2022
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight = 2435328; // 364 days later
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight = 8064;   // 4 * 2016
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight = 10080; // 5 * 2016
 
-        // Deployment of MWEB (LIP-0002, LIP-0003, and LIP-0004)
+        // Deployment of MWEB (LIP-0002, LIP-0003, and LIP-0004) — after SegWit (6048)
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].bit = 4;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight = 2209536; // Jan/Feb 2022
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight = 2419200; // 364 days later
+        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight = 8064;
+        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight = 10080;
 
         consensus.nMinimumChainWork = uint256S("0x00");
-        consensus.defaultAssumeValid = uint256S("0x000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");
+        consensus.defaultAssumeValid = uint256S("0x00009d5fbc8579e8b4292f1bab22437d9468c0cc615cb5b0242d8159b31760ad");
 
         pchMessageStart[0] = 0x72; // 'r'
         pchMessageStart[1] = 0x69; // 'i'
@@ -406,7 +386,7 @@ public:
         base58Prefixes[PUBKEY_ADDRESS] = {65};  // "T...""
         base58Prefixes[SCRIPT_ADDRESS] = {127}; // "t...""
         base58Prefixes[SCRIPT_ADDRESS2] = std::vector<unsigned char>(1,50);
-        base58Prefixes[SECRET_KEY] =     {209}; // "8K.../8L..."
+        base58Prefixes[SECRET_KEY] =     {193}; // "7U.../7W..." (WIF)
         base58Prefixes[EXT_PUBLIC_KEY] = {0x04, 0x35, 0x87, 0xCF};  // "tpub..."
         base58Prefixes[EXT_SECRET_KEY] = {0x04, 0x35, 0x83, 0x94};  // "tprv..."
 
@@ -454,9 +434,11 @@ public:
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.DGWHeight = std::numeric_limits<int>::max();  // Turns off Dark Gravity Wave (DGW) difficulty adjustment algorithm for regtest
-        ApplyRinHashConsensus(consensus, Consensus::RinHashGen::GetRegtestData());
+        // Peer-protocol-version floor schedule (height -> min version): 70017
+        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
-        consensus.nPowTargetSpacing = 60 * 50;
+        consensus.nPowTargetSpacing = 60; // match mainnet spacing (regtest convention)
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = true;
         consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
@@ -498,7 +480,7 @@ public:
         vSeeds.clear();      //!< Regtest mode doesn't have any DNS seeds.
 
         fDefaultConsistencyChecks = true;
-        fRequireStandard = true;
+        fRequireStandard = false;
         m_is_test_chain = true;
         m_is_mockable_chain = true;
 
@@ -612,32 +594,36 @@ public:
         consensus.BIP34Hash = uint256S("8075c771ed8b495ffd943980a95f702ab34fce3c8c54e379548bda33cc8c0573");
         consensus.BIP65Height = 76;
         consensus.BIP66Height = 76;
-        consensus.CSVHeight = 6048;
-        consensus.SegwitHeight = 6048;
+        consensus.CSVHeight = 432;
+        consensus.SegwitHeight = 432;
         consensus.MinBIP9WarningHeight = 8064;
         consensus.powLimit = uint256S("0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33h
         consensus.nPowTargetSpacing = 60;
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 1512;
-        consensus.nMinerConfirmationWindow = 2016;
+        consensus.nRuleChangeActivationThreshold = 324; // 75% of 432 (fast preview window)
+        consensus.nMinerConfirmationWindow = 432;       // short BIP9 window so upgrades rehearse quickly
         consensus.DGWHeight = 100;
-        ApplyRinHashConsensus(consensus, Consensus::RinHashGen::GetPreviewData());
+        // Peer-protocol-version floor schedule (height -> min version): 70017
+        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
+        // Taproot/MWEB — after SegWit (432); fast preview window (432) so they
+        // flag-day activate within ~a day of the SegWit activation.
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight = 2225664;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight = 2435328;
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight = 864;   // 2 * 432
+        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight = 1296; // 3 * 432
 
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].bit = 4;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight = 2209536;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight = 2419200;
+        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight = 864;
+        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight = 1296;
 
         consensus.nMinimumChainWork = uint256S("0x00");
-        consensus.defaultAssumeValid = uint256S("0x000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");
+        consensus.defaultAssumeValid = uint256S("0x00009d5fbc8579e8b4292f1bab22437d9468c0cc615cb5b0242d8159b31760ad");
 
         pchMessageStart[0] = 0x72; // 'r'
         pchMessageStart[1] = 0x69; // 'i'
@@ -665,7 +651,7 @@ public:
         base58Prefixes[PUBKEY_ADDRESS]  = std::vector<unsigned char>(1, 56);   // "P..."
         base58Prefixes[SCRIPT_ADDRESS]  = std::vector<unsigned char>(1, 118);  // "p..."
         base58Prefixes[SCRIPT_ADDRESS2] = std::vector<unsigned char>(1, 50);
-        base58Prefixes[SECRET_KEY]      = std::vector<unsigned char>(1, 219);  // "8M.../8N..."
+        base58Prefixes[SECRET_KEY]      = std::vector<unsigned char>(1, 184);  // "7A.../7C..." (WIF)
         base58Prefixes[EXT_PUBLIC_KEY]  = {0x03, 0xE2, 0x5D, 0x80};            // "ppub..."
         base58Prefixes[EXT_SECRET_KEY]  = {0x03, 0xE2, 0x59, 0x46};            // "pprv..."
 

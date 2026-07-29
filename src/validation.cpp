@@ -1312,6 +1312,13 @@ void CChainState::InitCoinsDB(
     m_coins_views = MakeUnique<CoinsViews>(
         leveldb_name, cache_size_bytes, in_memory, should_wipe);
 
+    // LookupBlockIndex() and CoinsDB() both require cs_main, and the MWEB view
+    // initialization below reads the best block and the coins database. cs_main
+    // is a recursive mutex, so taking it here is safe whether or not a caller
+    // already holds it (without it, DEBUG_LOCKORDER builds abort on the
+    // AssertLockHeld(cs_main) in LookupBlockIndex).
+    LOCK(cs_main);
+
     CBlock block;
     CBlockIndex* pindex = LookupBlockIndex(CoinsDB().GetBestBlock());
     if (pindex != nullptr) {
