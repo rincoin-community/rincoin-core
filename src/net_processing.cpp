@@ -118,6 +118,15 @@ static const unsigned int BLOCK_DOWNLOAD_WINDOW = 1024;
 static const int64_t BLOCK_DOWNLOAD_TIMEOUT_BASE = 1000000;
 /** Additional block download timeout per parallel downloading peer (i.e. 5 min) */
 static const int64_t BLOCK_DOWNLOAD_TIMEOUT_PER_PEER = 500000;
+/** Lower bound (in seconds) for the effective block interval used when computing the
+ *  block download timeout. The timeout scales with nPowTargetSpacing, but the wall-clock
+ *  cost of downloading and validating a block is independent of how often the network
+ *  produces blocks. On fast chains (short spacing) the raw interval-scaled timeout becomes
+ *  too tight and spuriously disconnects honest-but-slow peers (Rincoin's 60s spacing gives
+ *  only a 60s window). Never let the effective interval fall below this floor. Rincoin is a
+ *  Litecoin fork, so we adopt Litecoin's 150s block interval as the tolerance floor: a fast
+ *  chain keeps the same absolute block-download tolerance Litecoin already runs safely with. */
+static const int64_t BLOCK_DOWNLOAD_TIMEOUT_MIN_SPACING = 150;
 /** Maximum number of headers to announce when relaying blocks with headers message.*/
 static const unsigned int MAX_BLOCKS_TO_ANNOUNCE = 8;
 /** Maximum number of unconnecting headers announcements before DoS score */
@@ -4898,7 +4907,8 @@ bool PeerManager::SendMessages(CNode* pto)
         if (state.vBlocksInFlight.size() > 0) {
             QueuedBlock &queuedBlock = state.vBlocksInFlight.front();
             int nOtherPeersWithValidatedDownloads = nPeersWithValidatedDownloads - (state.nBlocksInFlightValidHeaders > 0);
-            if (count_microseconds(current_time) > state.nDownloadingSince + consensusParams.nPowTargetSpacing * (BLOCK_DOWNLOAD_TIMEOUT_BASE + BLOCK_DOWNLOAD_TIMEOUT_PER_PEER * nOtherPeersWithValidatedDownloads)) {
+            const int64_t effective_spacing = std::max<int64_t>(consensusParams.nPowTargetSpacing, BLOCK_DOWNLOAD_TIMEOUT_MIN_SPACING);
+            if (count_microseconds(current_time) > state.nDownloadingSince + effective_spacing * (BLOCK_DOWNLOAD_TIMEOUT_BASE + BLOCK_DOWNLOAD_TIMEOUT_PER_PEER * nOtherPeersWithValidatedDownloads)) {
                 LogPrintf("Timeout downloading block %s from peer=%d, disconnecting\n", queuedBlock.hash.ToString(), pto->GetId());
                 pto->fDisconnect = true;
                 return true;
