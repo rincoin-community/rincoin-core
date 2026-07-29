@@ -84,6 +84,17 @@ work only. Highlights so far:
   each network's existing floor height. This is networking policy only and does
   not affect block validity; effective behaviour is unchanged for the peers on
   the network today (which already advertise `70017`+).
+- **Block-download timeout floored at Litecoin's 150 s spacing.** The P2P
+  block-download timeout scales with `nPowTargetSpacing` (a peer is dropped if a
+  requested block stays in flight for ~one block interval). Rincoin's 60 s
+  spacing shrank that window to ~60 s — far tighter than Litecoin's ~150 s —
+  even though the wall-clock cost of downloading/validating a block does not
+  depend on block cadence. Under load this spuriously disconnected honest-but-slow
+  peers and could dead-lock a heavy regtest sync (both downloaders dropping their
+  only block source). The effective interval used for this timeout is now floored
+  at Litecoin's 150 s (`BLOCK_DOWNLOAD_TIMEOUT_MIN_SPACING`, `net_processing.cpp`).
+  Networking robustness only — no effect on consensus, block validity, or chain
+  state; chains whose spacing already meets/exceeds 150 s are unaffected.
 - **Continuous integration:** a GitHub Actions workflow runs the upstream
   container-based CI harness with two legs — a plain unit+functional build and
   an ASan/UBSan build. The gate is headless (core unit tests + functional
@@ -117,13 +128,19 @@ work only. Highlights so far:
   unit test (matching production callers, so `DEBUG_LOCKORDER` no longer
   aborts), and suppressed the intentional wrapping in Boost's `hash_combine`
   used by libmw aggregation.
-- **Local build helpers (developer tooling, not shipped):**
+- **Local build & test helpers (developer tooling, not shipped):**
   `contrib/build-windows-local.ps1` (Docker + MinGW cross-build on Windows) and
-  `contrib/build-linux-local.sh` (native, ccache-accelerated), plus
-  `contrib/test-asan-local.ps1` / `.sh`, which reproduce the CI ASan/UBSan leg
-  in Docker (with a fast single-suite mode) so sanitizer issues can be caught
-  locally without commit/push. All are for local testing only and keep their
-  outputs and caches out of the repository.
+  `contrib/build-linux-local.sh` (native, ccache-accelerated) for builds; plus a
+  local CI-parity harness that reproduces the GitHub CI legs in Docker without
+  commit/push. `contrib/ci-local-runner.sh` is the single container-side
+  entrypoint (self-documented via its header) driven by env vars —
+  `LEG=asan|plain`, `MODE=check|suite:<name>|func:<spec>`, `JOBS_ARG`,
+  `LOAD_HOGS` — over the shared image `contrib/ci-local.Dockerfile`; the host
+  wrappers `contrib/test-asan-local.ps1` / `.sh` only build the image, manage the
+  ccache/build volumes, and `docker run` that entrypoint. This gives both the
+  ASan/UBSan leg and a fast plain gcc leg for unit-suite or functional-test
+  iteration. All are for local testing only and keep their outputs and caches out
+  of the repository.
 - **Docs:** added [`doc/rincoin-parameters.md`](rincoin-parameters.md) and this
   consolidated history.
 
