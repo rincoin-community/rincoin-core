@@ -32,6 +32,13 @@
 param([switch]$Clean)
 
 $ErrorActionPreference = 'Stop'
+# docker prints build progress to stderr; that must not be treated as a fatal
+# error. We check $LASTEXITCODE explicitly after each docker call, so disable the
+# native-command error-action coupling where it exists (PowerShell 7.3+); on
+# Windows PowerShell 5.1 this variable is absent, so this is a harmless no-op.
+if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+    $PSNativeCommandUseErrorActionPreference = $false
+}
 
 $RepoRoot  = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $OutDir    = Join-Path $RepoRoot 'release-builds-local\windows'
@@ -68,7 +75,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive TZ=UTC
 RUN apt-get update && apt-get install -y \
       build-essential libtool autotools-dev automake pkg-config bsdmainutils \
-      python3 curl git cmake ccache rsync \
+      python3 curl git cmake ccache rsync dos2unix \
       g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-tools \
       nsis zip ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
@@ -88,6 +95,13 @@ mkdir -p /build/rincoin
 # Sync source changes into the persistent build volume (no --delete: keep objects).
 rsync -a --exclude=.git /src/ /build/rincoin/
 cd /build/rincoin
+# A Windows checkout may store text files with CRLF; normalize the build-system
+# files -- including the extensionless depends Makefile/config.guess/config.sub --
+# to LF so make and /bin/sh do not choke. -k keeps mtimes (avoids needless reconfigure).
+find . -type f \( -name "*.sh" -o -name "*.ac" -o -name "*.am" -o -name "*.m4" \
+    -o -name "*.mk" -o -name "*.include" -o -name "*.py" -o -name "configure" \
+    -o -name "Makefile" -o -name "config.guess" -o -name "config.sub" \) \
+    -print0 | xargs -0 -r dos2unix -k -q 2>/dev/null || true
 # Dependencies (cached in the build volume -> fast on reruns).
 make -C depends -j"$(nproc)" HOST="$HOST"
 # Configure once; reuse the configuration on later runs (incremental make).

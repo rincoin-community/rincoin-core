@@ -48,6 +48,11 @@ Quick start for building from source:
 - [Windows Build Notes](doc/build-windows.md)
 - [Release Build Guide](doc/build-release.md)
 
+## Release Notes
+
+- **Release history (canonical):** [doc/release-notes-rincoin.md](doc/release-notes-rincoin.md). A longer v1.1.0 narrative at [release-notes-rincoin.md](release-notes-rincoin.md) is being reconciled with it before the next release.
+- **Historical upstream notes (reference only, not Rincoin):** [doc/bitcoin-release-notes/](doc/bitcoin-release-notes/) and [doc/litecoin-release-notes/](doc/litecoin-release-notes/).
+
 ## Developer Notes
 
 See `chainparams.cpp` for network configuration.  
