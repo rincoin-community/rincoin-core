@@ -153,9 +153,10 @@ public:
 
         // Rincoin: no grandfathered block (the upstream value is a Litecoin mainnet block hash).
         consensus.mweb_input_metadata_grandfather_blockhash = uint256();
-        // Rincoin: MWEB has never been active, so the rule applies from MWEB activation
-        // (upstream Litecoin uses a mainnet flag-day height here).
+        // Rincoin: MWEB has never been active, so both rules apply from MWEB activation
+        // (upstream Litecoin uses mainnet flag-day heights here).
         consensus.mweb_pegout_feature_activation_height = 0;
+        consensus.mweb_extradata_feature_activation_height = 0;
         consensus.frozen_mweb_output_ids = GetFrozenMWEBOutputIDs();
 
         /**
@@ -389,6 +390,7 @@ public:
         consensus.defaultAssumeValid = uint256S("0x00009d5fbc8579e8b4292f1bab22437d9468c0cc615cb5b0242d8159b31760ad");
 
         consensus.mweb_pegout_feature_activation_height = 0;
+        consensus.mweb_extradata_feature_activation_height = 0;
         pchMessageStart[0] = 0x72; // 'r'
         pchMessageStart[1] = 0x69; // 'i'
         pchMessageStart[2] = 0x6E; // 'n'
@@ -484,6 +486,7 @@ public:
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
         consensus.mweb_pegout_feature_activation_height = 0;
+        consensus.mweb_extradata_feature_activation_height = 0;
         // Regtest-only test vector so the upstream functional tests can exercise the rule.
         consensus.frozen_mweb_output_ids = GetRegTestFrozenMWEBOutputIDs();
 
