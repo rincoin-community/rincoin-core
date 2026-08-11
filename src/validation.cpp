@@ -23,6 +23,7 @@
 #include <mw/node/CoinsView.h>
 #include <mweb/mweb_db.h>
 #include <mweb/mweb_node.h>
+#include <node/terminal.h>
 #include <node/ui_interface.h>
 #include <optional.h>
 #include <policy/fees.h>
@@ -2565,6 +2566,15 @@ static void UpdateTip(CTxMemPool& mempool, const CBlockIndex* pindexNew, const C
             pindex = pindex->pprev;
         }
     }
+    // Terminal release: once the tip enters the pre-halt window, warn on every
+    // new tip so the remaining-block count stays current and the warning cannot
+    // be missed by an operator who only ever looks at one RPC.
+    const Consensus::Params& terminal_consensus = chainParams.GetConsensus();
+    if (terminal_consensus.TerminalWarning(pindexNew->nHeight)) {
+        DoWarning(TerminalWarningMessage(terminal_consensus.nTerminalHeight,
+                                         terminal_consensus.nTerminalHeight - pindexNew->nHeight));
+    }
+
     LogPrintf("%s: new best=%s height=%d version=0x%08x log2_work=%f tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)%s\n", __func__,
       pindexNew->GetBlockHash().ToString(), pindexNew->nHeight, pindexNew->nVersion,
       log(pindexNew->nChainWork.getdouble())/log(2.0), (unsigned long)pindexNew->nChainTx,
@@ -2973,6 +2983,18 @@ bool CChainState::ActivateBestChain(BlockValidationState &state, const CChainPar
     CBlockIndex *pindexMostWork = nullptr;
     CBlockIndex *pindexNewTip = nullptr;
     int nStopAtHeight = gArgs.GetArg("-stopatheight", DEFAULT_STOPATHEIGHT);
+    // Terminal release: set once we have clamped away a candidate at or above
+    // the terminal height, so we can shut down after the loop has connected
+    // everything below it.
+    bool terminal_reached = false;
+    const auto abort_terminal = [&chainparams](int tip_height) {
+        const int terminal_height = chainparams.GetConsensus().nTerminalHeight;
+        g_terminal_halted = true;
+        return AbortNode(strprintf("Terminal height %d reached: refusing to connect a block at or "
+                                   "above it and shutting down. Chain left at height %d.",
+                                   terminal_height, tip_height),
+                         TerminalHaltMessage(terminal_height));
+    };
     do {
         // Block until the validation queue drains. This should largely
         // never happen in normal operation, however may happen during
@@ -2994,6 +3016,20 @@ bool CChainState::ActivateBestChain(BlockValidationState &state, const CChainPar
 
                 if (pindexMostWork == nullptr) {
                     pindexMostWork = FindMostWorkChain();
+                }
+
+                // Terminal release: never connect a block at or above the
+                // terminal height. Clamp the target to its ancestor one below,
+                // so everything under the boundary still connects normally and
+                // this node's last validated state is the last pre-boundary
+                // block. The candidate itself is left in the block index as an
+                // ordinary unconnected branch: it is deliberately NOT marked
+                // invalid, so the peer that sent it is not punished and no
+                // consensus rule differs from a build without this halt.
+                if (pindexMostWork != nullptr &&
+                    chainparams.GetConsensus().TerminalReached(pindexMostWork->nHeight)) {
+                    terminal_reached = true;
+                    pindexMostWork = pindexMostWork->GetAncestor(chainparams.GetConsensus().nTerminalHeight - 1);
                 }
 
                 // Whether we have anything to do at all.
@@ -3020,7 +3056,14 @@ bool CChainState::ActivateBestChain(BlockValidationState &state, const CChainPar
                     GetMainSignals().BlockConnected(trace.pblock, trace.pindex);
                 }
             } while (!m_chain.Tip() || (starting_tip && CBlockIndexWorkComparator()(m_chain.Tip(), starting_tip)));
-            if (!blocks_connected) return true;
+            // A candidate at the terminal height was clamped away and nothing was
+            // left to connect: the tip is already sitting on the last block below
+            // the boundary, so halt now rather than returning to wait for work
+            // that will never be accepted.
+            if (!blocks_connected) {
+                if (terminal_reached) return abort_terminal(m_chain.Height());
+                return true;
+            }
 
             const CBlockIndex* pindexFork = m_chain.FindFork(starting_tip);
             bool fInitialDownload = IsInitialBlockDownload();
@@ -3036,6 +3079,10 @@ bool CChainState::ActivateBestChain(BlockValidationState &state, const CChainPar
             }
         }
         // When we reach this point, we switched to a new tip (stored in pindexNewTip).
+
+        // Terminal release: everything below the boundary is connected and its
+        // listeners have been notified, so it is now safe to stop.
+        if (terminal_reached) return abort_terminal(pindexNewTip ? pindexNewTip->nHeight : -1);
 
         if (nStopAtHeight && pindexNewTip && pindexNewTip->nHeight >= nStopAtHeight) StartShutdown();
 

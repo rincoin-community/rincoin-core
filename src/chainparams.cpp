@@ -118,6 +118,12 @@ public:
         // protocol bump and no height-gated floor step, so the schedule has a
         // single entry; the mechanism is retained for future releases.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
+        // Terminal height. This release stops here: it validates normally up to
+        // 839,999 and then shuts down rather than connect a block at 840,000.
+        // It is not an activation height and adds no consensus rule -- see
+        // Consensus::Params::nTerminalHeight. Compiled in and not overridable.
+        consensus.nTerminalHeight = 840000;
+        consensus.nTerminalWarningLead = 43200; // 30 days at 60s spacing
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -433,6 +439,11 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): flat
         // 70017 MWEB-capable baseline from genesis; no floor step in this release.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
+        // Terminal halt disabled by default: testnet's current height is not
+        // pinned here, and a stale compiled-in value would refuse to start.
+        // Rehearse with -terminalheight instead.
+        consensus.nTerminalHeight = 0;
+        consensus.nTerminalWarningLead = 43200;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -523,6 +534,10 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): flat
         // 70017 MWEB-capable baseline from genesis; no floor step in this release.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
+        // Terminal halt disabled by default so the existing functional suite is
+        // unaffected; tests opt in with -terminalheight.
+        consensus.nTerminalHeight = 0;
+        consensus.nTerminalWarningLead = 10;
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
         consensus.nPowTargetSpacing = 60; // match mainnet spacing (regtest convention)
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -694,6 +709,9 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): flat
         // 70017 MWEB-capable baseline from genesis; no floor step in this release.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
+        // Terminal halt disabled by default; set -terminalheight to rehearse.
+        consensus.nTerminalHeight = 0;
+        consensus.nTerminalWarningLead = 100;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -772,20 +790,54 @@ const CChainParams &Params() {
     return *globalChainParams;
 }
 
+void CChainParams::UpdateTerminalParametersFromArgs(const ArgsManager& args)
+{
+    const bool set_height = args.IsArgSet("-terminalheight");
+    const bool set_lead = args.IsArgSet("-terminalwarninglead");
+    if (!set_height && !set_lead) return;
+
+    // Fail closed: on mainnet the terminal height is compiled in and no runtime
+    // option may move, disable, or re-enable it. Refuse loudly rather than
+    // silently ignoring the option, so a mistaken mainnet invocation is obvious.
+    if (!IsTestChain()) {
+        throw std::runtime_error("-terminalheight and -terminalwarninglead are for test chains only; "
+                                 "the terminal height of a release build is fixed");
+    }
+
+    if (set_height) {
+        const int64_t height = args.GetArg("-terminalheight", consensus.nTerminalHeight);
+        if (height < 0 || height >= std::numeric_limits<int>::max()) {
+            throw std::runtime_error(strprintf("Terminal height %ld is out of valid range. Use 0 to disable the terminal halt.", height));
+        }
+        consensus.nTerminalHeight = static_cast<int>(height);
+    }
+    if (set_lead) {
+        const int64_t lead = args.GetArg("-terminalwarninglead", consensus.nTerminalWarningLead);
+        if (lead < 0 || lead >= std::numeric_limits<int>::max()) {
+            throw std::runtime_error(strprintf("Terminal warning lead %ld is out of valid range.", lead));
+        }
+        consensus.nTerminalWarningLead = static_cast<int>(lead);
+    }
+}
+
 std::unique_ptr<const CChainParams> CreateChainParams(const ArgsManager& args, const std::string& chain)
 {
+    std::unique_ptr<CChainParams> params;
     if (chain == CBaseChainParams::MAIN) {
-        return std::unique_ptr<CChainParams>(new CMainParams());
+        params.reset(new CMainParams());
     } else if (chain == CBaseChainParams::TESTNET) {
-        return std::unique_ptr<CChainParams>(new CTestNetParams());
+        params.reset(new CTestNetParams());
     } else if (chain == CBaseChainParams::SIGNET) {
-        return std::unique_ptr<CChainParams>(new CTestNetParams()); // TODO: Support SigNet
+        params.reset(new CTestNetParams()); // TODO: Support SigNet
     } else if (chain == CBaseChainParams::REGTEST) {
-        return std::unique_ptr<CChainParams>(new CRegTestParams(args));
+        params.reset(new CRegTestParams(args));
     } else if (chain == CBaseChainParams::PREVIEW) {
-        return std::unique_ptr<CChainParams>(new CPreviewParams(args));
+        params.reset(new CPreviewParams(args));
+    } else {
+        throw std::runtime_error(strprintf("%s: Unknown chain %s.", __func__, chain));
     }
-    throw std::runtime_error(strprintf("%s: Unknown chain %s.", __func__, chain));
+    params->UpdateTerminalParametersFromArgs(args);
+    return params;
 }
 
 void SelectParams(const std::string& network)

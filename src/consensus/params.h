@@ -127,6 +127,42 @@ struct Params {
         }
         return floor;
     }
+
+    /**
+     * Terminal height: the height at which this release stops.
+     *
+     * This is NOT an activation height and introduces no consensus rule. The
+     * node validates normally below it, never connects a block at or above it,
+     * and shuts down instead. A block at the terminal height is left in the
+     * block index as an ordinary unconnected candidate: it is not marked
+     * invalid and the peer that sent it is not punished, so the chain this node
+     * leaves behind stays valid for any successor release to continue from.
+     *
+     * 0 disables the terminal halt entirely.
+     */
+    int nTerminalHeight{0};
+
+    /**
+     * How many blocks before nTerminalHeight the persistent operator warning
+     * begins. Ignored when the terminal halt is disabled.
+     */
+    int nTerminalWarningLead{0};
+
+    /** Whether this build stops at a height at all. */
+    bool TerminalEnabled() const { return nTerminalHeight > 0; }
+
+    /** Whether a block at nHeight is at or beyond the terminal height and must
+     *  therefore never be connected. */
+    bool TerminalReached(int nHeight) const
+    {
+        return TerminalEnabled() && nHeight >= nTerminalHeight;
+    }
+
+    /** Whether nHeight is inside the pre-halt warning window. */
+    bool TerminalWarning(int nHeight) const
+    {
+        return TerminalEnabled() && nHeight >= nTerminalHeight - nTerminalWarningLead;
+    }
 };
 
 } // namespace Consensus

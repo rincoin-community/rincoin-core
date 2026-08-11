@@ -93,6 +93,17 @@ public:
     const std::vector<uint8_t>& FixedSeeds() const { return vFixedSeeds; }
     const CCheckpointData& Checkpoints() const { return checkpointData; }
     const ChainTxData& TxData() const { return chainTxData; }
+
+    /**
+     * Apply the -terminalheight / -terminalwarninglead overrides.
+     *
+     * Test chains only. On mainnet this is a hard no-op: the terminal height is
+     * compiled in and cannot be moved, disabled, or re-enabled at runtime, which
+     * is the whole point of a fail-closed terminal build. Throws on a malformed
+     * or out-of-range value.
+     */
+    void UpdateTerminalParametersFromArgs(const ArgsManager& args);
+
 protected:
     CChainParams() {}
 

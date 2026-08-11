@@ -5,6 +5,8 @@
 
 #include <rpc/server.h>
 
+#include <chainparams.h>
+#include <node/terminal.h>
 #include <rpc/util.h>
 #include <shutdown.h>
 #include <sync.h>
@@ -439,6 +441,17 @@ UniValue CRPCTable::execute(const JSONRPCRequest &request) const
         LOCK(g_rpc_warmup_mutex);
         if (fRPCInWarmup)
             throw JSONRPCError(RPC_IN_WARMUP, rpcWarmupStatus);
+    }
+
+    // Terminal release: once the terminal height has been reached the node is
+    // shutting down and must not be asked to do any more work. Only the few
+    // methods an operator needs in order to observe or hasten that shutdown are
+    // still answered. This window is short -- the halt requests shutdown at the
+    // same moment it sets the flag -- so this gate covers the race rather than
+    // providing a durable state.
+    if (g_terminal_halted && !g_terminal_rpc_allowlist.count(request.strMethod)) {
+        throw JSONRPCError(RPC_MISC_ERROR,
+                           TerminalHaltMessage(Params().GetConsensus().nTerminalHeight).original);
     }
 
     // Find method

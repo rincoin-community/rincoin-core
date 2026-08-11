@@ -14,6 +14,7 @@
 #include <miner.h>
 #include <net.h>
 #include <node/context.h>
+#include <node/terminal.h>
 #include <policy/fees.h>
 #include <pow.h>
 #include <rpc/blockchain.h>
@@ -136,8 +137,32 @@ static bool GenerateBlock(ChainstateManager& chainman, CBlock& block, uint64_t& 
     return true;
 }
 
+/**
+ * Terminal release: refuse any request whose result would be a block at or above
+ * the terminal height.
+ *
+ * Between the tip reaching the last block below the boundary and that boundary
+ * block arriving from the network, the node is still alive and would otherwise
+ * cheerfully build the boundary block itself under the current rules. That is
+ * exactly what a build which does not implement the new rules must not do, so
+ * every mining and block-submission route fails closed here.
+ */
+static void EnsureBelowTerminalHeight()
+{
+    const Consensus::Params& consensus = Params().GetConsensus();
+    if (!consensus.TerminalEnabled()) return;
+
+    const int next_height = WITH_LOCK(cs_main, return ::ChainActive().Height()) + 1;
+    if (next_height >= consensus.nTerminalHeight) {
+        throw JSONRPCError(RPC_MISC_ERROR,
+                           TerminalHaltMessage(consensus.nTerminalHeight).original);
+    }
+}
+
 static UniValue generateBlocks(ChainstateManager& chainman, const CTxMemPool& mempool, const CScript& coinbase_script, int nGenerate, uint64_t nMaxTries)
 {
+    EnsureBelowTerminalHeight();
+
     int nHeightEnd = 0;
     int nHeight = 0;
 
@@ -321,6 +346,8 @@ static RPCHelpMan generateblock()
         },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
+    EnsureBelowTerminalHeight();
+
     const auto address_or_descriptor = request.params[0].get_str();
     CScript coinbase_script;
     std::string error;
@@ -599,6 +626,8 @@ static RPCHelpMan getblocktemplate()
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
+    EnsureBelowTerminalHeight();
+
     LOCK(cs_main);
 
     std::string strMode = "template";
@@ -952,6 +981,8 @@ static RPCHelpMan submitblock()
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
+    EnsureBelowTerminalHeight();
+
     std::shared_ptr<CBlock> blockptr = std::make_shared<CBlock>();
     CBlock& block = *blockptr;
     if (!DecodeHexBlk(block, request.params[0].get_str())) {
@@ -1016,6 +1047,8 @@ static RPCHelpMan submitheader()
                 },
         [&](const RPCHelpMan& self, const JSONRPCRequest& request) -> UniValue
 {
+    EnsureBelowTerminalHeight();
+
     CBlockHeader h;
     if (!DecodeHexBlockHeader(h, request.params[0].get_str())) {
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, "Block header decode failed");

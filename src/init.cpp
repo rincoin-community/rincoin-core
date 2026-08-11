@@ -32,6 +32,7 @@
 #include <net_processing.h>
 #include <netbase.h>
 #include <node/context.h>
+#include <node/terminal.h>
 #include <node/ui_interface.h>
 #include <policy/feerate.h>
 #include <policy/fees.h>
@@ -62,6 +63,7 @@
 
 #include <validationinterface.h>
 #include <walletinitinterface.h>
+#include <warnings.h>
 
 #include <functional>
 #include <set>
@@ -1942,6 +1944,24 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
         }
     }
     LogPrintf("nBestHeight = %d\n", chain_active_height);
+
+    // Terminal release: refuse to start once the chain is sitting on the last
+    // block below the terminal height. Without this a restarted node would sync
+    // to the boundary, abort, and loop forever. Bail out here, before the
+    // connection manager comes up, so a halted node touches the network at all
+    // only if it still has real work to do below the boundary.
+    {
+        const Consensus::Params& consensus = chainparams.GetConsensus();
+        if (consensus.TerminalEnabled() && chain_active_height >= consensus.nTerminalHeight - 1) {
+            return InitError(TerminalHaltMessage(consensus.nTerminalHeight));
+        }
+        if (consensus.TerminalWarning(chain_active_height)) {
+            const bilingual_str warning = TerminalWarningMessage(
+                consensus.nTerminalHeight, consensus.nTerminalHeight - chain_active_height);
+            LogPrintf("*** %s\n", warning.original);
+            SetMiscWarning(warning);
+        }
+    }
 
     Discover();
 
