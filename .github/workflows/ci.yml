@@ -6,6 +6,7 @@ on:
       - master
       - dev/driftwood
       - 'driftwood/**'
+      - legacy-1.1
   pull_request:
   workflow_dispatch:
 
