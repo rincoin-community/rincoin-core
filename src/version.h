@@ -9,17 +9,18 @@
  * network protocol versioning
  */
 
-// Current protocol version. A per-network peer-protocol-version floor schedule
-// (Consensus::Params::vMinPeerProtoVersionFloors, configured in chainparams.cpp)
-// uses this value to fence off older nodes once the active chain reaches a
-// configured floor height.
-static const int PROTOCOL_VERSION = 70018;
+// Current protocol version. This release introduces no protocol change: it
+// speaks and requires the same 70017 the network already runs. The per-network
+// floor schedule (Consensus::Params::vMinPeerProtoVersionFloors, configured in
+// chainparams.cpp) is retained as a mechanism but is flat at 70017 everywhere,
+// so no floor step is gated on any height.
+static const int PROTOCOL_VERSION = 70017;
 
 //! initial proto version, to be increased after version/verack negotiation
 static const int INIT_PROTO_VERSION = 209;
 
 //! disconnect from peers older than this proto version
-static const int MIN_PEER_PROTO_VERSION = 31800;
+static const int MIN_PEER_PROTO_VERSION = 70017;
 
 //! BIP 0031, pong message, is enabled for all versions AFTER this one
 static const int BIP0031_VERSION = 60000;
