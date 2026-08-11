@@ -8,12 +8,19 @@ Consensus::Params exposes a per-network peer-protocol-version floor schedule
 (vMinPeerProtoVersionFloors: a sorted list of {height, min_version} pairs).
 The floor in effect at the tip height is the min_version of the highest entry
 whose height the chain has reached; peers advertising a lower version are
-disconnected during the version handshake (this is independent of the older
-MIN_PEER_PROTO_VERSION = 31800 obsolete-version cutoff).
+disconnected during the version handshake.
 
-On regtest the schedule is {{0, 70017}, {600, 70018}}: 70017 is required from
-genesis and the floor rises to 70018 at height 600. LOW_VERSION (70017) is
-therefore accepted below height 600 but rejected at/after it.
+This release introduces no protocol bump, so every network carries a *flat*
+schedule of a single {0, 70017} entry: the same floor from genesis to any
+height, with no step. Height 600 used to carry a 70018 step on regtest, so this
+test deliberately mines across it and asserts that a 70017 peer stays welcome
+on both sides -- it fails loudly if a height-gated floor is reintroduced.
+
+Note that MIN_PEER_PROTO_VERSION is also 70017, so the obsolete-version cutoff
+and the floor coincide and a sub-70017 peer is rejected by the earlier of the
+two checks. The floor's own rejection path is therefore unreachable while the
+schedule stays flat at the hard minimum; that is expected, and the mechanism is
+retained for a future release that raises one of them.
 """
 
 from test_framework.messages import msg_version
@@ -22,11 +29,9 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, p2p_port
 
 
-REGTEST_FLOOR_HEIGHT = 600
-REGTEST_FLOOR = 70018
-LOW_VERSION = 70017   # one below the floor
-HIGH_VERSION = 70018  # at the floor
-OBSOLETE_VERSION = 31799  # one below MIN_PEER_PROTO_VERSION (31800)
+FORMER_STEP_HEIGHT = 600  # where regtest used to raise the floor to 70018
+FLAT_FLOOR = 70017        # the single schedule entry on every network
+OBSOLETE_VERSION = 70016  # one below MIN_PEER_PROTO_VERSION (70017)
 
 
 class FixedVersionPeer(P2PInterface):
@@ -75,49 +80,45 @@ class MinPeerProtoFloorTest(BitcoinTestFramework):
         peer.wait_for_disconnect()
         return peer
 
+    def assert_flat_floor_peer_accepted(self, node, where):
+        """A peer at the flat floor connects and stays connected."""
+        node.add_p2p_connection(FixedVersionPeer(FLAT_FLOOR))
+        peers = node.getpeerinfo()
+        assert_equal(len(peers), 1)
+        assert_equal(peers[0]["version"], FLAT_FLOOR)
+        self.log.info("  accepted at %s (height %d)", where, node.getblockcount())
+        node.disconnect_p2ps()
+
     def run_test(self):
         node = self.nodes[0]
 
-        self.log.info("Obsolete version (< MIN_PEER_PROTO_VERSION) is always rejected")
-        # This rule is independent of the floor; check it while the floor is
-        # still dormant (height 0).
+        self.log.info("A peer below the hard minimum is always rejected")
         self.connect_expect_reject(node, OBSOLETE_VERSION,
                                    "using obsolete version %d" % OBSOLETE_VERSION)
 
-        self.log.info("Below floor height: a low-version peer is accepted")
-        node.add_p2p_connection(FixedVersionPeer(LOW_VERSION))
-        peers = node.getpeerinfo()
-        assert_equal(len(peers), 1)
-        assert_equal(peers[0]["version"], LOW_VERSION)
-        node.disconnect_p2ps()
+        self.log.info("A peer at the flat floor is accepted at genesis height")
+        self.assert_flat_floor_peer_accepted(node, "genesis")
 
-        self.log.info("Mine to one block before the floor height; still dormant")
         addr = node.getnewaddress()
-        node.generatetoaddress(REGTEST_FLOOR_HEIGHT - 1, addr)
-        assert_equal(node.getblockcount(), REGTEST_FLOOR_HEIGHT - 1)
 
-        node.add_p2p_connection(FixedVersionPeer(LOW_VERSION))
-        assert_equal(node.getpeerinfo()[0]["version"], LOW_VERSION)
-        node.disconnect_p2ps()
+        self.log.info("Mine to one block below the former step height")
+        node.generatetoaddress(FORMER_STEP_HEIGHT - 1, addr)
+        assert_equal(node.getblockcount(), FORMER_STEP_HEIGHT - 1)
+        self.assert_flat_floor_peer_accepted(node, "just below the former step")
 
-        self.log.info("Mine past the floor block; floor now %d", REGTEST_FLOOR)
-        # Mine a few blocks past the floor height so the tip is unambiguously
-        # at/above the floor when the next peer connects. Testing exactly at the
-        # boundary height is timing-sensitive: the version handshake reads the
-        # active chain height, and a peer connecting the instant the floor block
-        # is connected could otherwise race the tip update.
+        self.log.info("Mine past the former step height; the floor must not rise")
+        # Mine a few blocks past it so the tip is unambiguously above the former
+        # step when the next peer connects. Testing exactly at the boundary is
+        # timing-sensitive: the version handshake reads the active chain height,
+        # and a peer connecting the instant that block is connected could
+        # otherwise race the tip update.
         node.generatetoaddress(5, addr)
-        assert_equal(node.getblockcount(), REGTEST_FLOOR_HEIGHT + 4)
+        assert_equal(node.getblockcount(), FORMER_STEP_HEIGHT + 4)
+        self.assert_flat_floor_peer_accepted(node, "above the former step")
 
-        self.log.info("At/above floor height: low-version peer is disconnected")
-        self.connect_expect_reject(node, LOW_VERSION,
-                                   "below RinHash floor %d" % REGTEST_FLOOR)
-
-        self.log.info("At/above floor height: high-version peer is accepted")
-        node.add_p2p_connection(FixedVersionPeer(HIGH_VERSION))
-        peers = node.getpeerinfo()
-        assert_equal(len(peers), 1)
-        assert_equal(peers[0]["version"], HIGH_VERSION)
+        self.log.info("A sub-minimum peer is still rejected above the former step")
+        self.connect_expect_reject(node, OBSOLETE_VERSION,
+                                   "using obsolete version %d" % OBSOLETE_VERSION)
 
 
 if __name__ == '__main__':

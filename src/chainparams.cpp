@@ -113,11 +113,11 @@ public:
         consensus.nRuleChangeActivationThreshold = 6048; // 75% of 8064
         consensus.nMinerConfirmationWindow = 8064; // nPowTargetTimespan / nPowTargetSpacing * 4
         consensus.DGWHeight = 30000; // Dark Gravity Wave (DGW) difficulty adjustment algorithm
-        // Peer-protocol-version floor schedule (height -> min version): 70017 is
-        // the MWEB-capable baseline required from genesis (symbolic: the network
-        // already runs >= 70017); 70018 (RinHash-aware) is required from the
-        // fourth-halving boundary onward.
-        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {840000, 70018}};
+        // Peer-protocol-version floor schedule (height -> min version): a flat
+        // 70017 MWEB-capable baseline from genesis. This release introduces no
+        // protocol bump and no height-gated floor step, so the schedule has a
+        // single entry; the mechanism is retained for future releases.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -430,9 +430,9 @@ public:
         consensus.nRuleChangeActivationThreshold = 1512; // 75% for testchains
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
         consensus.DGWHeight = 100; // Dark Gravity Wave (DGW) difficulty adjustment algorithm
-        // Peer-protocol-version floor schedule (height -> min version): 70017
-        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 4200.
-        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {4200, 70018}};
+        // Peer-protocol-version floor schedule (height -> min version): flat
+        // 70017 MWEB-capable baseline from genesis; no floor step in this release.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -520,9 +520,9 @@ public:
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.DGWHeight = std::numeric_limits<int>::max();  // Turns off Dark Gravity Wave (DGW) difficulty adjustment algorithm for regtest
-        // Peer-protocol-version floor schedule (height -> min version): 70017
-        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
-        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
+        // Peer-protocol-version floor schedule (height -> min version): flat
+        // 70017 MWEB-capable baseline from genesis; no floor step in this release.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
         consensus.nPowTargetSpacing = 60; // match mainnet spacing (regtest convention)
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -691,9 +691,9 @@ public:
         consensus.nRuleChangeActivationThreshold = 324; // 75% of 432 (fast preview window)
         consensus.nMinerConfirmationWindow = 432;       // short BIP9 window so upgrades rehearse quickly
         consensus.DGWHeight = 100;
-        // Peer-protocol-version floor schedule (height -> min version): 70017
-        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
-        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
+        // Peer-protocol-version floor schedule (height -> min version): flat
+        // 70017 MWEB-capable baseline from genesis; no floor step in this release.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;

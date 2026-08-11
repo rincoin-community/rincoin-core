@@ -76,22 +76,25 @@ BOOST_AUTO_TEST_CASE(rinhash_mainnet_header_vectors)
 
 BOOST_AUTO_TEST_CASE(rinhash_peer_proto_floor_params)
 {
-    struct Case { std::string net; int height; int floor; };
+    // This release introduces no protocol bump, so every network carries a flat
+    // 70017 floor: the same value from genesis to any height, with no step. The
+    // heights probed below are the ones that used to carry a 70018 step, so this
+    // test fails loudly if a height-gated floor is reintroduced by accident.
+    struct Case { std::string net; int former_step_height; };
     const Case cases[] = {
-        {CBaseChainParams::MAIN,    840000, 70018},
-        {CBaseChainParams::TESTNET,   4200, 70018},
-        {CBaseChainParams::REGTEST,    600, 70018},
-        {CBaseChainParams::PREVIEW,    600, 70018},
+        {CBaseChainParams::MAIN,    840000},
+        {CBaseChainParams::TESTNET,   4200},
+        {CBaseChainParams::REGTEST,    600},
+        {CBaseChainParams::PREVIEW,    600},
     };
     for (const auto& c : cases) {
         SelectParams(c.net);
         const auto& consensus = Params().GetConsensus();
-        // 70017 MWEB baseline holds from genesis up to just below the bump height.
-        BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(0), 70017);
-        BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(c.height - 1), 70017);
-        // The RinHash floor applies at and after the bump height.
-        BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(c.height), c.floor);
-        BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(c.height + 1), c.floor);
+        BOOST_CHECK_EQUAL(consensus.vMinPeerProtoVersionFloors.size(), 1U);
+        for (const int height : {0, 1, c.former_step_height - 1, c.former_step_height,
+                                 c.former_step_height + 1, c.former_step_height * 2}) {
+            BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(height), 70017);
+        }
     }
 }
 
