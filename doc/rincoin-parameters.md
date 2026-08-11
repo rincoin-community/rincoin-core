@@ -130,20 +130,59 @@ Defined in [`src/netaddress.h`](../src/netaddress.h); exercised by
 
 ## 5. Peer-protocol-version floor
 
-A per-network minimum peer protocol version becomes effective at a set height.
-Below the floor, peers are disconnected during the version handshake.
+A per-network minimum peer protocol version, effective from a given height.
+Below the floor, peers are disconnected during the version handshake. This is a
+networking policy and does not affect block validity.
 
-| Network  | Floor height | `min_peer_protocol_version` |
-| -------- | ------------ | --------------------------- |
-| mainnet  | `840,000`    | `70018` |
-| testnet  | `4,200`      | `70018` |
-| regtest  | `600`        | `70018` |
-| preview  | `600`        | `70018` |
+This release introduces **no protocol bump**, so every network carries a flat
+single-entry schedule:
 
-Configured as plain constants in `Consensus::Params`
-(`nMinPeerProtoVersionFloorHeight`, `nMinPeerProtoVersionFloor`); see
-`rinhash_peer_proto_floor_params` in
-[`src/test/rinhash_tests.cpp`](../src/test/rinhash_tests.cpp).
+| Network  | Schedule (height → `min_peer_protocol_version`) |
+| -------- | ----------------------------------------------- |
+| mainnet  | `{0 → 70017}` |
+| testnet  | `{0 → 70017}` |
+| regtest  | `{0 → 70017}` |
+| preview  | `{0 → 70017}` |
+
+`PROTOCOL_VERSION` is also `70017` ([`src/version.h`](../src/version.h)), the
+MWEB-capable baseline the network already runs. `MIN_PEER_PROTO_VERSION` is
+`70017` as well, so the hard obsolete-version cutoff and the floor coincide and
+the floor's own rejection path is currently unreachable. The schedule mechanism
+(`Consensus::Params::vMinPeerProtoVersionFloors` /
+`MinPeerProtoVersionFloorAt()`) is retained for a future release that raises
+either value. See `rinhash_peer_proto_floor_params` in
+[`src/test/rinhash_tests.cpp`](../src/test/rinhash_tests.cpp) and
+[`test/functional/feature_min_peer_proto_floor.py`](../test/functional/feature_min_peer_proto_floor.py).
+
+## 6. Terminal height
+
+**This release stops at a height.** It is a terminal build for the current
+lineage: it validates normally up to the last block below the terminal height
+and then shuts down rather than connect a block at it.
+
+| Network  | `nTerminalHeight` | `nTerminalWarningLead` |
+| -------- | ----------------- | ---------------------- |
+| mainnet  | `840,000`         | `43,200` (30 days at 60 s spacing) |
+| testnet  | `0` (disabled)    | `43,200` |
+| regtest  | `0` (disabled)    | `10` |
+| preview  | `0` (disabled)    | `100` |
+
+Derived values on mainnet: the last block this release will ever connect is
+`839,999`, and the persistent warning begins at `840,000 − 43,200 = 796,800`.
+
+This is **not an activation height and adds no consensus rule.** Below it the
+node is byte-for-byte the same validator as a build without the halt — proven by
+[`test/functional/feature_terminal_neutrality.py`](../test/functional/feature_terminal_neutrality.py),
+which runs an armed and an unarmed node over the same chain and requires
+identical tips, identical UTXO-set hashes and identical `getblockchaininfo`.
+A block at the terminal height is left in the block index as an ordinary
+unconnected candidate: it is not marked invalid, the peer that sent it is not
+punished, and the chain left behind is directly resumable by a successor release.
+
+On test chains the height and lead can be set with `-terminalheight` and
+`-terminalwarninglead`. On mainnet both options are **refused**: the terminal
+height is compiled in and no runtime option can move, disable, or re-enable it.
+See [`src/test/terminal_tests.cpp`](../src/test/terminal_tests.cpp).
 
 ---
 

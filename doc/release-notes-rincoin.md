@@ -22,6 +22,51 @@ corresponds to the Litecoin `v0.21.4` base.
 
 ## Unreleased — current development
 
+> ## ⚠ This is a terminal release: it stops at block height 840,000
+>
+> **Install it, and plan to replace it.** This release does not implement the
+> height-840,000 consensus rules, because the community has not selected them
+> yet — the review at
+> <https://github.com/rincoin-community/consensus-840k> is still open. Rather
+> than guess, and rather than let unattended nodes drift onto whichever
+> continuation happens to reach them first, this release refuses to go past the
+> question.
+>
+> **What it does.** It validates normally up to block **839,999**. When a block
+> at 840,000 arrives, it does not connect it: it logs the reason, raises a fatal
+> error and shuts down. From height **796,800** — about 30 days earlier — every
+> node carries a persistent warning counting down the remaining blocks. From the
+> moment the next block would be 840,000, `getblocktemplate`, the `generate*`
+> RPCs, `submitblock` and `submitheader` refuse, so a terminal node can never
+> mine the boundary block itself. Restarting a node whose chain has already
+> reached 839,999 is refused outright.
+>
+> **What it does not do.** It changes **no consensus rule, no protocol version
+> and no block or transaction format.** Below 840,000 it is the same validator
+> as a build without the halt, and it cannot cause a chain split. The block at
+> the boundary is stored but never connected — it is *not* marked invalid, and
+> the peer that sent it is *not* banned. The chain a halted node leaves behind is
+> a valid chain that a successor release picks up and continues with no reindex.
+>
+> **What you must do.** Before block 840,000 — roughly mid-to-late November 2026,
+> though the exact date depends on real block timing — install a release that
+> implements the rules the community selects. A node left on this release will
+> stop and stay stopped.
+>
+> The only externally visible change is identity: this build reports itself as
+> `/RincoinCommunityCore:1.1.0/` and continues to speak protocol `70017`. The
+> per-network peer-protocol floor is flat at `70017` on every network; the
+> previously scheduled step to `70018` at height 840,000 has been removed, since
+> this release makes no protocol change to gate. See
+> [`doc/rincoin-parameters.md`](rincoin-parameters.md) §5 and §6.
+>
+> One operational consequence worth stating plainly: a halted node stops serving
+> blocks to its peers. If a large share of the network runs this release,
+> capacity is withdrawn at exactly the moment the chain reaches 840,000. That is
+> the deliberate trade — a node that stops is safer than a node that silently
+> picks a side — but operators should plan their upgrade rather than rely on the
+> halt.
+
 No consensus rules change in this line; it is maintenance and infrastructure
 work only. Highlights so far:
 

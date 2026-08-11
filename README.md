@@ -1,6 +1,22 @@
 
 # RinCoin Core
 
+> ### ⚠ This release stops at block height 840,000
+>
+> This is a **terminal release** for the current lineage. It does not implement
+> the height-840,000 consensus rules — the community review at
+> [consensus-840k](https://github.com/rincoin-community/consensus-840k) is still
+> open — so it validates normally up to block 839,999 and then shuts down
+> instead of connecting a block at 840,000. It warns persistently for the ~30
+> days beforehand.
+>
+> It changes no consensus rule, no protocol version and no block or transaction
+> format, so it cannot cause a chain split, and the chain it leaves behind is
+> directly resumable by a successor release. **Install a release that implements
+> the selected rules before block 840,000**, or your node will stop. See the
+> [release notes](doc/release-notes-rincoin.md) and
+> [`doc/rincoin-parameters.md`](doc/rincoin-parameters.md) §6.
+
 RinCoin is a decentralized digital currency, based on Bitcoin Core, that introduces a new Proof-of-Work hashing algorithm called **RinHash**. RinHash is a hybrid PoW algorithm designed for both security and ASIC-resistance, combining BLAKE3, Argon2d, and SHA3-256. This README provides an overview of RinCoin’s specifications, the RinHash algorithm, and network parameters.
 
 ## Key Specifications
