@@ -69,7 +69,11 @@ void RPCNestedTests::rpcNestedTests()
     QVERIFY(result == result2);
 
     RPCConsole::RPCExecuteCommandLine(*node, result, "getblock(getbestblockhash())[tx][0]", &filtered);
-    QVERIFY(result == "97ddfbbae6be97fd6cdf3e7ca13232a3afff2353e29badfab7f73011edd4ced9");
+    // The coinbase txid of the Rincoin mainnet genesis block. For a single-tx
+    // block this equals the block's merkle root, so the value is derivable from
+    // the chain rather than from whatever this build happens to print; see
+    // doc/rincoin-parameters.md section 3.
+    QVERIFY(result == "8590c08530d2ed422b726a938f07df8f380671569e04dcb556dcb9601c47cdad");
     QVERIFY(filtered == "getblock(getbestblockhash())[tx][0]");
 
     RPCConsole::RPCParseCommandLine(nullptr, result, "importprivkey", false, &filtered);
