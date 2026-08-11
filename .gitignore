@@ -164,3 +164,4 @@ dist/
 # test/bench binaries
 /src/test/test_rincoin
 /src/bench/bench_rincoin
+/src/test-dns-seeds
