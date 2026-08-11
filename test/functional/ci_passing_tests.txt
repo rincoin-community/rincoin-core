@@ -206,3 +206,11 @@ wallet_import_with_label.py --legacy-wallet
 wallet_implicitsegwit.py --legacy-wallet
 rpc_bind.py --ipv4
 rpc_bind.py --nonloopback
+
+# Terminal-build coverage: the halt at the terminal height, the mining refusal in
+# the pre-halt window, the warning window, and the neutrality proof that this
+# build validates identically to one without the halt below that height.
+feature_terminal_halt.py
+feature_terminal_mining_refused.py
+feature_terminal_warning.py
+feature_terminal_neutrality.py
