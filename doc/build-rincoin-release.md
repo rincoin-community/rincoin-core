@@ -226,6 +226,48 @@ By default, all platform groups are built. You can disable specific targets:
 
 These switches can be combined.
 
+#### Building a Single Target
+
+`--no-*` works in groups of two; `--only` selects exactly one target and can be
+repeated. This is what lets CI run each target as its own parallel job instead
+of building all five back to back:
+
+```bash
+./contrib/build_release.sh v1.0.1 --only windows
+./contrib/build_release.sh v1.0.1 --only linux-aarch64-ubuntu24 --only windows
+```
+
+Valid targets: `linux-x86_64-ubuntu20`, `linux-x86_64-ubuntu24`,
+`linux-aarch64-ubuntu20`, `linux-aarch64-ubuntu24`, `windows`.
+
+Only the x86_64 Linux targets need Berkeley DB 4.8 on the host; the others get
+theirs from `depends`, so `--only windows` runs without `install_db4.sh`.
+
+#### Versioning a Local Build
+
+`--local` builds the working tree and labels the output `local`. To build the
+working tree but label it with a real version -- what CI does for a tag, so the
+built source is exactly the commit that triggered the run rather than a re-clone
+of the remote:
+
+```bash
+./contrib/build_release.sh --local --version v1.1.0
+```
+
+### Glibc Baselines
+
+The two Linux images exist to give two glibc floors. A binary built against an
+older glibc runs on newer ones, not the other way round:
+
+| Build | glibc | Runs on |
+|-------|-------|---------|
+| `ubuntu20` | 2.31 | Ubuntu 20.04+, Debian 11+ (so also Ubuntu 22.04 / Debian 12) |
+| `ubuntu24` | 2.39 | Ubuntu 24.04+, Debian 13+ |
+
+The `ubuntu20` image is the compatibility build; keep it unless Ubuntu 20.04
+base images stop being pullable, at which point 22.04 (glibc 2.35) is the next
+floor and drops Ubuntu 20.04 and Debian 11 users.
+
 ### Clean Flags Quick Reference
 
 | Flag | Clears Caches | Rebuilds Docker Images | Use Case |
@@ -241,6 +283,8 @@ These switches can be combined.
 | `--no-linux-x86` | Skip both x86_64 Linux builds |
 | `--no-aarch64` | Skip both ARM64 Linux builds |
 | `--no-windows` | Skip Windows build |
+| `--only <target>` | Build only this target; repeatable, wins over `--no-*` |
+| `--version <tag>` | Label a `--local` build with a real version |
 
 ## Build Process
 

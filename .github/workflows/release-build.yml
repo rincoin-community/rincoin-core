@@ -1,16 +1,23 @@
 name: Build Release Binaries
 
+# Every target builds as its own job so they run in parallel. Building all five
+# Linux/Windows targets in one job took just over two hours; the wall time is now
+# whichever single target is slowest.
+#
+# Note on where this file has to live: workflow_dispatch only lists workflows
+# that exist on the default branch, but a tag build runs the copy of this file
+# from the tagged commit. So a release branch needs this file too -- keeping it
+# only on master means tagging there would run whatever old version that branch
+# still carries.
+
 on:
   push:
     tags:
       - 'v*'
-    branches:
-      - 'aarch64-support'   # remove once merged to default branch
-      - 'apple-support'     # remove once merged to default branch
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to build (for example v1.0.1)'
+        description: 'Tag to build (for example v1.0.1). Leave empty for an unversioned test build.'
         required: false
         default: ''
         type: string
@@ -19,8 +26,34 @@ permissions:
   contents: write
 
 jobs:
-  build-release:
+  build:
+    name: ${{ matrix.name }}
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The two glibc baselines. A binary built against an older glibc runs
+          # on newer ones, not the other way round, so the "ubuntu20" build
+          # (glibc 2.31) is the one that covers Ubuntu 22.04 (2.35) and
+          # Debian 12 (2.36); "ubuntu24" (glibc 2.39) covers Ubuntu 24.04 and
+          # Debian 13 (2.41).
+          - target: linux-x86_64-ubuntu20
+            name: linux x86_64 (glibc 2.31 — Ubuntu 20.04+, Debian 11+)
+            needs_db4: true
+          - target: linux-x86_64-ubuntu24
+            name: linux x86_64 (glibc 2.39 — Ubuntu 24.04+, Debian 13+)
+            needs_db4: true
+          # aarch64 is cross-compiled from the x86_64 runner, not emulated.
+          - target: linux-aarch64-ubuntu20
+            name: linux aarch64 (glibc 2.31 — Ubuntu 20.04+, Debian 11+)
+            needs_db4: false
+          - target: linux-aarch64-ubuntu24
+            name: linux aarch64 (glibc 2.39 — Ubuntu 24.04+, Debian 13+)
+            needs_db4: false
+          - target: windows
+            name: windows x64
+            needs_db4: false
 
     steps:
       - name: Checkout
@@ -42,6 +75,7 @@ jobs:
           docker info
 
       - name: Install Berkeley DB 4.8
+        if: matrix.needs_db4
         run: ./contrib/install_db4.sh "$(pwd)"
 
       - name: Resolve build tag
@@ -52,37 +86,47 @@ jobs:
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            # branch push (CI test) — use --local
-            TAG="--local"
+            TAG=""
           fi
+          VERSION="${TAG#v}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION:-local}" >> "$GITHUB_OUTPUT"
+          echo "label=${TAG:-local}" >> "$GITHUB_OUTPUT"
 
-      - name: Build release artifacts
+      # depends/ is built from source and is by far the slowest part of a build.
+      # Key on the depends tree itself so the cache is dropped the moment a
+      # package or its version changes, and keep one cache per target because
+      # each host triplet builds its own set.
+      - name: Cache depends
+        uses: actions/cache@v4
+        with:
+          path: .build-cache
+          key: depends-${{ matrix.target }}-${{ hashFiles('depends/packages/**', 'depends/Makefile', 'depends/funcs.mk') }}
+          restore-keys: |
+            depends-${{ matrix.target }}-
+
+      - name: Build ${{ matrix.target }}
         run: |
-          if [ "${{ steps.vars.outputs.tag }}" = "--local" ]; then
-            ./contrib/build_release.sh --local
-          else
-            ./contrib/build_release.sh "${{ steps.vars.outputs.tag }}"
+          # Always build the checked-out commit. The script's clone mode would
+          # re-fetch the tag from a remote, which is both slower and a chance for
+          # the built source to differ from the commit that triggered the run.
+          ARGS=(--local --only "${{ matrix.target }}")
+          if [ -n "${{ steps.vars.outputs.tag }}" ]; then
+            ARGS+=(--version "${{ steps.vars.outputs.tag }}")
           fi
+          ./contrib/build_release.sh "${ARGS[@]}"
 
-      - name: Upload release-builds artifact
+      - name: Upload ${{ matrix.target }} artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rincoin-${{ steps.vars.outputs.tag == '--local' && 'local' || steps.vars.outputs.tag }}-release-builds
-          path: release-builds/
+          name: rincoin-${{ steps.vars.outputs.label }}-${{ matrix.target }}
+          path: |
+            release-builds/*/tarballs/rincoin-*
+            release-builds/*/binaries/**
           if-no-files-found: error
 
-      - name: Publish GitHub Release assets
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: ${{ steps.vars.outputs.tag }}
-          files: |
-            release-builds/*/tarballs/*
-            release-builds/*/source/SHA256SUMS.txt
-            release-builds/*/tarballs/SHA256SUMS.txt
-
   build-macos:
+    name: macOS ${{ matrix.arch }}
     strategy:
       fail-fast: false
       matrix:
@@ -112,13 +156,12 @@ jobs:
           elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
           else
-            # branch push (CI test) — use --local
-            TAG="--local"
+            TAG=""
           fi
           VERSION="${TAG#v}"
-          [ "$TAG" = "--local" ] && VERSION="local"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION:-local}" >> "$GITHUB_OUTPUT"
+          echo "label=${TAG:-local}" >> "$GITHUB_OUTPUT"
 
       - name: Install dependencies
         run: |
@@ -183,12 +226,6 @@ jobs:
             --with-gui=qt5
           make -j$(sysctl -n hw.logicalcpu)
 
-      - name: Debug via SSH (on failure)
-        if: failure()
-        uses: mxschmitt/action-tmate@v3
-        with:
-          timeout-minutes: 30
-
       - name: Create DMG
         run: |
           export PATH="$(brew --prefix qt@5)/bin:$PATH"
@@ -211,10 +248,94 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v7
         with:
-          name: rincoin-${{ steps.vars.outputs.tag == '--local' && 'local' || steps.vars.outputs.tag }}-macos-${{ matrix.arch }}
+          name: rincoin-${{ steps.vars.outputs.label }}-macos-${{ matrix.arch }}
           path: |
             rincoin-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.tar.gz
             Rincoin-Qt-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.dmg
+          if-no-files-found: error
+
+  # One place that sees every target, so the combined SHA256SUMS covers the whole
+  # release rather than whatever one job happened to produce, and so a tag
+  # publishes exactly once instead of racing six jobs at the same release.
+  collect:
+    name: Collect and publish
+    needs: [build, build-macos]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve build tag
+        id: vars
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+          else
+            TAG=""
+          fi
+          VERSION="${TAG#v}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION:-local}" >> "$GITHUB_OUTPUT"
+          echo "label=${TAG:-local}" >> "$GITHUB_OUTPUT"
+
+      - name: Download every build artifact
+        uses: actions/download-artifact@v6
+        with:
+          pattern: rincoin-${{ steps.vars.outputs.label }}-*
+          path: downloaded
+
+      - name: Assemble the release tree
+        run: |
+          set -e
+          OUT="release/${{ steps.vars.outputs.version }}"
+          mkdir -p "$OUT/tarballs" "$OUT/binaries"
+
+          # Linux/Windows jobs upload release-builds/<version>/{tarballs,binaries};
+          # macOS jobs upload their tarball and dmg at the top level.
+          find downloaded -path '*/tarballs/*' -type f \
+               ! -name 'SHA256SUMS.txt' -exec cp -a {} "$OUT/tarballs/" \;
+          find downloaded -maxdepth 2 -type f \( -name '*-apple-darwin.tar.gz' -o -name '*.dmg' \) \
+               -exec cp -a {} "$OUT/tarballs/" \;
+          for d in downloaded/*/release-builds/*/binaries/*; do
+            [ -d "$d" ] || continue
+            cp -a "$d" "$OUT/binaries/"
+          done
+
+          echo "== collected =="
+          ls -la "$OUT/tarballs"
+          test -n "$(ls -A "$OUT/tarballs")" || { echo "no artifacts collected"; exit 1; }
+
+      - name: Checksum the whole release
+        run: |
+          cd "release/${{ steps.vars.outputs.version }}/tarballs"
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Write release info
+        run: |
+          OUT="release/${{ steps.vars.outputs.version }}"
+          {
+            echo "Rincoin ${{ steps.vars.outputs.version }} release binaries"
+            echo
+            echo "Built:  $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
+            echo "Tag:    ${{ steps.vars.outputs.label }}"
+            echo "Commit: ${GITHUB_SHA}"
+            echo
+            echo "Artifacts:"
+            sed 's/^/  /' "$OUT/tarballs/SHA256SUMS.txt"
+            echo
+            echo "Each archive also carries an internal SHA256SUMS.txt covering"
+            echo "the binaries inside it."
+          } > "$OUT/README.txt"
+          cat "$OUT/README.txt"
+
+      - name: Upload the combined release artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: rincoin-${{ steps.vars.outputs.label }}-release
+          path: release/
           if-no-files-found: error
 
       - name: Publish GitHub Release assets
@@ -223,5 +344,5 @@ jobs:
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
           files: |
-            rincoin-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.tar.gz
-            Rincoin-Qt-${{ steps.vars.outputs.version }}-${{ matrix.tarball_suffix }}.dmg
+            release/*/tarballs/*
+            release/*/README.txt

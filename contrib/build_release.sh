@@ -32,14 +32,34 @@ LOCAL_BUILD=false
 BUILD_LINUX_X86=true
 BUILD_LINUX_AARCH64=true
 BUILD_WINDOWS=true
+VERSION_OVERRIDE=""
+
+# Every target this script can produce. --only narrows the list to one or more
+# of these, which is what lets CI run each target as its own parallel job
+# instead of building all five back to back in a single one.
+ALL_TARGETS="linux-x86_64-ubuntu20 linux-x86_64-ubuntu24 linux-aarch64-ubuntu20 linux-aarch64-ubuntu24 windows"
+SELECTED_TARGETS=""
 
 if [ -z "$1" ]; then
     echo -e "${RED}Error: Version tag or --local is required${NC}"
-    echo "Usage: $0 <git-tag|--local> [git-url] [--clean] [--clean-all] [--no-linux-x86] [--no-aarch64] [--no-windows]"
+    echo "Usage: $0 <git-tag|--local> [git-url] [options]"
+    echo ""
+    echo "Options:"
+    echo "  --clean                 rebuild from scratch (keeps docker images)"
+    echo "  --clean-all             also drop the builder docker images"
+    echo "  --version <tag>         label a --local build with this version"
+    echo "                          (use in CI: build the checked-out tag, do not re-clone)"
+    echo "  --only <target>         build just this target; repeatable"
+    echo "  --no-linux-x86          skip both linux x86_64 targets"
+    echo "  --no-aarch64            skip both linux aarch64 targets"
+    echo "  --no-windows            skip the windows target"
+    echo ""
+    echo "Targets for --only:"
+    for t in ${ALL_TARGETS}; do echo "  ${t}"; done
+    echo ""
     echo "Example: $0 v1.0.1"
-    echo "Example: $0 v1.0.1 https://github.com/Rin-coin/rincoin.git --clean"
     echo "Example: $0 --local --clean-all"
-    echo "Example: $0 --local --no-aarch64"
+    echo "Example: $0 --local --version v1.1.0 --only windows"
     exit 1
 fi
 
@@ -68,6 +88,29 @@ while [ $# -gt 0 ]; do
             GIT_TAG="local"
             shift
             ;;
+        --only)
+            if [ -z "$2" ]; then
+                echo -e "${RED}Error: --only needs a target name${NC}" >&2
+                exit 1
+            fi
+            case " ${ALL_TARGETS} " in
+                *" $2 "*) SELECTED_TARGETS="${SELECTED_TARGETS} $2" ;;
+                *)
+                    echo -e "${RED}Error: unknown target '$2'${NC}" >&2
+                    echo "Valid targets: ${ALL_TARGETS}" >&2
+                    exit 1
+                    ;;
+            esac
+            shift 2
+            ;;
+        --version)
+            if [ -z "$2" ]; then
+                echo -e "${RED}Error: --version needs a value${NC}" >&2
+                exit 1
+            fi
+            VERSION_OVERRIDE="$2"
+            shift 2
+            ;;
         --no-linux-x86)
             BUILD_LINUX_X86=false
             shift
@@ -89,9 +132,35 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-GIT_URL="${GIT_URL:-https://github.com/Rin-coin/rincoin.git}"
+GIT_URL="${GIT_URL:-https://github.com/rincoin-community/rincoin-core.git}"
+
+# Resolve the target set. --only is explicit and wins outright; otherwise start
+# from everything and subtract the --no-* groups.
+if [ -n "$SELECTED_TARGETS" ]; then
+    TARGETS="$(echo ${SELECTED_TARGETS})"
+else
+    TARGETS=""
+    for t in ${ALL_TARGETS}; do
+        case "$t" in
+            linux-x86_64-*)  [ "$BUILD_LINUX_X86" = "true" ]     || continue ;;
+            linux-aarch64-*) [ "$BUILD_LINUX_AARCH64" = "true" ] || continue ;;
+            windows)         [ "$BUILD_WINDOWS" = "true" ]       || continue ;;
+        esac
+        TARGETS="${TARGETS} ${t}"
+    done
+    TARGETS="$(echo ${TARGETS})"
+fi
+
+target_enabled() {
+    case " ${TARGETS} " in *" $1 "*) return 0 ;; *) return 1 ;; esac
+}
+
 if [ "$LOCAL_BUILD" = "true" ]; then
-    VERSION="local"
+    # --version lets CI build the already-checked-out tag while still labelling
+    # the artifacts with the real version. Without it a local build is "local".
+    VERSION="${VERSION_OVERRIDE#v}"
+    VERSION="${VERSION:-local}"
+    [ -n "$VERSION_OVERRIDE" ] && GIT_TAG="$VERSION_OVERRIDE"
 else
     VERSION="${GIT_TAG#v}"
 fi
@@ -116,9 +185,7 @@ fi
 echo -e "${BLUE}Version:${NC} ${VERSION}"
 echo -e "${BLUE}Clean Caches:${NC} ${CLEAN_BUILD}"
 echo -e "${BLUE}Clean Images:${NC} ${CLEAN_IMAGES}"
-echo -e "${BLUE}Build Linux x86_64:${NC} ${BUILD_LINUX_X86}"
-echo -e "${BLUE}Build Linux aarch64:${NC} ${BUILD_LINUX_AARCH64}"
-echo -e "${BLUE}Build Windows:${NC} ${BUILD_WINDOWS}"
+echo -e "${BLUE}Targets:${NC} ${TARGETS}"
 echo ""
 
 cleanup() {
@@ -166,14 +233,17 @@ check_prerequisites() {
         exit 1
     fi
 
-    if [ "$BUILD_LINUX_X86" = "true" ] && [ ! -d "$BDB_PREFIX" ]; then
+    # Only the x86_64 linux targets mount the host Berkeley DB; aarch64 and
+    # windows get theirs from depends, so do not demand it for those.
+    if { target_enabled linux-x86_64-ubuntu20 || target_enabled linux-x86_64-ubuntu24; } && [ ! -d "$BDB_PREFIX" ]; then
         print_error "Berkeley DB 4.8 not found at $BDB_PREFIX"
         print_info "Please run: ./contrib/install_db4.sh \$(pwd)"
         exit 1
     fi
 
-    if [ "$BUILD_LINUX_X86" != "true" ] && [ "$BUILD_LINUX_AARCH64" != "true" ] && [ "$BUILD_WINDOWS" != "true" ]; then
-        print_error "No build targets enabled. Remove one of --no-linux-x86/--no-aarch64/--no-windows"
+    if [ -z "$TARGETS" ]; then
+        print_error "No build targets enabled."
+        print_info "Valid targets: ${ALL_TARGETS}"
         exit 1
     fi
 }
@@ -202,15 +272,15 @@ clone_and_checkout() {
 setup_build_dirs() {
     mkdir -p "$BUILD_DIR" "$BUILD_DIR/source" "$BUILD_DIR/tarballs" "$DEPENDS_SOURCES_CACHE" "$DEPENDS_BUILT_CACHE"
 
-    if [ "$BUILD_LINUX_X86" = "true" ]; then
-        mkdir -p "$BUILD_DIR/binaries/linux-ubuntu20" "$BUILD_DIR/binaries/linux-ubuntu24"
-    fi
-    if [ "$BUILD_LINUX_AARCH64" = "true" ]; then
-        mkdir -p "$BUILD_DIR/binaries/linux-aarch64-ubuntu20" "$BUILD_DIR/binaries/linux-aarch64-ubuntu24"
-    fi
-    if [ "$BUILD_WINDOWS" = "true" ]; then
-        mkdir -p "$BUILD_DIR/binaries/windows"
-    fi
+    for t in ${TARGETS}; do
+        case "$t" in
+            linux-x86_64-ubuntu20)  mkdir -p "$BUILD_DIR/binaries/linux-ubuntu20" ;;
+            linux-x86_64-ubuntu24)  mkdir -p "$BUILD_DIR/binaries/linux-ubuntu24" ;;
+            linux-aarch64-ubuntu20) mkdir -p "$BUILD_DIR/binaries/linux-aarch64-ubuntu20" ;;
+            linux-aarch64-ubuntu24) mkdir -p "$BUILD_DIR/binaries/linux-aarch64-ubuntu24" ;;
+            windows)                mkdir -p "$BUILD_DIR/binaries/windows" ;;
+        esac
+    done
 }
 
 create_source_packages() {
@@ -424,11 +494,9 @@ Git Tag:         ${GIT_TAG}
 Git Commit:      ${git_commit}
 Git Date:        ${git_date}
 
-Build Targets Enabled:
-----------------------
-Linux x86_64:    ${BUILD_LINUX_X86}
-Linux aarch64:   ${BUILD_LINUX_AARCH64}
-Windows x64:     ${BUILD_WINDOWS}
+Build Targets Built:
+--------------------
+${TARGETS}
 
 Release Contents:
 -----------------
@@ -460,19 +528,26 @@ main() {
     setup_build_dirs
     create_source_packages
 
-    if [ "$BUILD_LINUX_X86" = "true" ]; then
-        build_linux_binaries "20.04" "ubuntu20" "x86_64-pc-linux-gnu" "x86_64" "linux-ubuntu20" "x86_64-linux-gnu" "" "strip" "true"
-        build_linux_binaries "24.04" "ubuntu24" "x86_64-pc-linux-gnu" "x86_64" "linux-ubuntu24" "x86_64-linux-gnu-ubuntu24" "" "strip" "true"
-    fi
-
-    if [ "$BUILD_LINUX_AARCH64" = "true" ]; then
-        build_linux_binaries "20.04" "ubuntu20" "aarch64-linux-gnu" "aarch64" "linux-aarch64-ubuntu20" "aarch64-linux-gnu" "g++-aarch64-linux-gnu binutils-aarch64-linux-gnu" "aarch64-linux-gnu-strip" "false"
-        build_linux_binaries "24.04" "ubuntu24" "aarch64-linux-gnu" "aarch64" "linux-aarch64-ubuntu24" "aarch64-linux-gnu-ubuntu24" "g++-aarch64-linux-gnu binutils-aarch64-linux-gnu" "aarch64-linux-gnu-strip" "false"
-    fi
-
-    if [ "$BUILD_WINDOWS" = "true" ]; then
-        build_windows_binaries
-    fi
+    # One case per target keeps the dispatch immune to the `set -e` behaviour of
+    # `guard && command` lists, and makes an unhandled target an error rather
+    # than a silent no-op.
+    for t in ${TARGETS}; do
+        case "$t" in
+            linux-x86_64-ubuntu20)
+                build_linux_binaries "20.04" "ubuntu20" "x86_64-pc-linux-gnu" "x86_64" "linux-ubuntu20" "x86_64-linux-gnu" "" "strip" "true" ;;
+            linux-x86_64-ubuntu24)
+                build_linux_binaries "24.04" "ubuntu24" "x86_64-pc-linux-gnu" "x86_64" "linux-ubuntu24" "x86_64-linux-gnu-ubuntu24" "" "strip" "true" ;;
+            linux-aarch64-ubuntu20)
+                build_linux_binaries "20.04" "ubuntu20" "aarch64-linux-gnu" "aarch64" "linux-aarch64-ubuntu20" "aarch64-linux-gnu" "g++-aarch64-linux-gnu binutils-aarch64-linux-gnu" "aarch64-linux-gnu-strip" "false" ;;
+            linux-aarch64-ubuntu24)
+                build_linux_binaries "24.04" "ubuntu24" "aarch64-linux-gnu" "aarch64" "linux-aarch64-ubuntu24" "aarch64-linux-gnu-ubuntu24" "g++-aarch64-linux-gnu binutils-aarch64-linux-gnu" "aarch64-linux-gnu-strip" "false" ;;
+            windows)
+                build_windows_binaries ;;
+            *)
+                print_error "Unhandled target '$t'"
+                exit 1 ;;
+        esac
+    done
 
     create_checksums
     create_release_info
