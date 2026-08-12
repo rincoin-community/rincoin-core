@@ -1,10 +1,8 @@
 # Rincoin Core — Release History
 
-> **Maintenance note — pre-release reconciliation pending.**
-> **Status: active — this is the canonical Rincoin release history.** A separate
-> detailed narrative at [`../release-notes-rincoin.md`](../release-notes-rincoin.md)
-> (repo root) is currently stale; the two will be reconciled before the next
-> release so this file remains the single source of truth.
+> **Status: active — this is the canonical Rincoin release history.** The
+> separate detailed narrative that used to sit in the repository root has been
+> folded into this file and removed, so this is now the single source of truth.
 
 This is the consolidated release history for **Rincoin Core**. It complements,
 rather than replaces, the upstream per-version notes archived under
@@ -165,18 +163,94 @@ No public version number is assigned to this development line yet.
 ## v1.1.0-rc1 — community maintenance (release candidate)
 
 A community-maintenance and infrastructure release candidate. It did **not**
-change mainnet consensus rules. Notable items:
+change mainnet consensus rules.
+
+> The RinHash "activations table" (JSON → generated header → runtime resolver)
+> shipped in this release candidate and has since been **reverted** in the
+> current development line, together with its `getrinhashparams` RPC, the
+> `rinhash` object it added to `getblockchaininfo`, and its code-generation
+> guard. RinHash parameters are hard-coded again and the peer-protocol-version
+> floor is retained as plain `Consensus::Params` constants. The detail below
+> describes what survives.
+
+### Peer-protocol-version floor
+
+A per-network minimum peer protocol version becomes effective at a set height.
+From that height forward, peers advertising a lower `nVersion` are disconnected
+during the version handshake (`net_processing.cpp`, VERSION handler).
+
+| Network | Floor height | Floor |
+|---------|--------------|-------|
+| mainnet | 840000       | 70018 |
+| testnet | 4200         | 70018 |
+| regtest | 600          | 70018 |
+| preview | 600          | 70018 |
+
+Below the floor height the schedule's baseline (`70017`) applies.
+
+### `PROTOCOL_VERSION` bumped to 70018
+
+`src/version.h` advertises `PROTOCOL_VERSION = 70018`. v1.0.x peers (`70017`)
+remain interoperable everywhere except at and above the per-network floor
+height, where they are disconnected during the version handshake.
+
+### Previewnet (`preview` chain)
+
+A fourth chain dedicated to rehearsal mining and integration drills:
+
+- `-preview` command-line flag, `[preview]` config section.
+- P2P magic `rinp` (`0x72 0x69 0x6E 0x70`); ports `49555` (P2P), `49556` (RPC).
+- Bech32 HRPs `prin` / `prmweb`; base58 prefixes `56` (PUBKEY), `118` (SCRIPT),
+  `219` (SECRET); ext-key prefixes `0x03E25D80` / `0x03E25946`.
+- Reuses testnet's genesis verbatim, which simplifies sync and tooling.
+
+### MWEB HogEx empty-`vin` fix
+
+`src/consensus/tx_check.cpp` exempts HogEx transactions from the "transaction
+has no inputs" check, and `src/mweb/mweb_miner.cpp` asserts the HogEx
+structural invariant before block assembly so a malformed HogEx fails fast
+rather than producing an invalid block. This restores the ability to mine MWEB
+blocks containing a HogEx aggregator transaction with an empty `vin`, which is
+its specified shape.
+
+### Block-download timeout floor (Litecoin parity)
+
+The P2P block-download timeout scales with the block interval
+(`nPowTargetSpacing`): a peer is disconnected if a requested block stays in
+flight for roughly one block interval. Rincoin's 60-second mainnet spacing made
+that window only ~60s — far tighter than the ~150s Litecoin runs with and the
+~600s of Bitcoin — even though the wall-clock cost of downloading and
+validating a block is independent of how often blocks are produced. Under load
+this spuriously disconnected honest-but-slow peers, and on regtest it could
+deadlock a heavy sync when both downloaders dropped their only block source.
+The effective interval is now floored at Litecoin's 150-second spacing
+(`BLOCK_DOWNLOAD_TIMEOUT_MIN_SPACING`, `net_processing.cpp`). This is a
+networking-robustness change only: it does not affect consensus, block
+validity, or mainnet chain state, and chains whose spacing already meets or
+exceeds 150s are unaffected.
+
+### Other items
 
 - ARM64 (aarch64) Linux release targets and CI/release-engineering
   improvements; MinGW release optimization.
-- A RinHash "activations table" (JSON → generated header → runtime resolver)
-  and a peer-protocol-version floor (`70018`) scheduled per network.
-- MWEB HogEx empty-`vin` handling fix.
+- Qt splash and logo assets restored to their v1.0.1 form, reverting an
+  unintended asset change that landed in the v1.0.4 line.
 - GPG-signed release tags.
 
-> Note: the activations-table machinery introduced here has since been
-> **reverted** in the current development line (see above); the peer-version
-> floor is retained as plain constants.
+### Testing
+
+- Unit tests (`src/test/rinhash_tests.cpp`): canonical PoW vector, mainnet
+  header vectors, and the per-network peer-protocol floor schedule.
+- Functional test (`test/functional/feature_min_peer_proto_floor.py`): regtest
+  end to end, covering acceptance below the floor height and disconnection at
+  and above it.
+
+### Upgrade notes
+
+Standard upgrade for wallet users: replace binaries and restart. No datadir
+migration and no reindex are required. Miners, pools, explorers and exchanges
+should upgrade before mainnet block `840000`, after which peers still running
+v1.0.x cannot maintain connections to v1.1.0 peers.
 
 ---
 
@@ -189,10 +263,38 @@ change mainnet consensus rules. Notable items:
 
 ## v1.0.4 — maintenance
 
+Released 4 February 2026, on top of v1.0.1.
+
+### Argon2d SIMD acceleration, and the fixes it needed
+
+Runtime-dispatched SIMD implementations of the Argon2d stage of RinHash
+(`src/crypto/argon2/argon2_dispatch.c`): CPUID detection selects AVX512, AVX2,
+SSSE3 or the reference implementation, so one binary adapts to the host and no
+recompilation is needed. `configure.ac` applies `-mssse3` / `-mavx2` /
+`-mavx512f` only to their respective modules, so a CPU lacking a feature never
+executes its instructions.
+
+The first cut of the AVX2, SSSE3 and AVX512 paths **computed wrong hashes**.
+Each used a 4-argument BLAMKA round macro that shuffled only within a single
+register, where the PHC reference shuffles between registers. They were
+replaced with the correct 8-argument `BLAKE2_ROUND_1_*` / `BLAKE2_ROUND_2_*`
+forms (`SWAP_HALVES` for rows, `SWAP_QUARTERS` / `UNSWAP_QUARTERS` for
+columns). Without those fixes, SIMD-optimised builds produced incorrect
+Argon2d output.
+
+### Other changes
+
 - Fixed MWEB file operations failing on Windows with non-ASCII data paths.
-- DNS-seed updates and additional seeders.
-- Qt: shift+click range selection in the coin-control dialog.
-- Updated checkpoints and build tooling; assorted build fixes.
+- DNS-seed updates and additional seeders; checkpoints updated through block
+  435,935, with a checkpoint-generation tool added.
+- Qt: shift+click range selection in the coin-control dialog, and wallet
+  performance improvements in the sync and payment dialogs.
+- Release build tooling for Linux (x86_64 and aarch64) and Windows, plus
+  toolchain-compatibility fixes for Ubuntu 24.04, MinGW-w64 and Python 3.12.
+- Developer tools: a genesis-block miner and a base58 prefix test utility.
+- Sequential block-file read hints (`posix_fadvise(POSIX_FADV_SEQUENTIAL)`)
+  to reduce I/O latency during initial block download.
+- New application icons.
 
 ## v1.0.2 / v1.0.3 — RinHash v2 (rolled back)
 
