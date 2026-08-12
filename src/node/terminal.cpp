@@ -23,14 +23,14 @@ namespace {
 //! Tier boundaries, expressed in time so they stay meaningful on a chain with a
 //! different block spacing.
 constexpr int64_t SECONDS_PER_DAY = 24 * 60 * 60;
-constexpr int64_t NEAR_THRESHOLD_SECONDS = 7 * SECONDS_PER_DAY;
+constexpr int64_t APPROACHING_THRESHOLD_SECONDS = 7 * SECONDS_PER_DAY;
 constexpr int64_t IMMINENT_THRESHOLD_SECONDS = SECONDS_PER_DAY;
 
 //! How often a loud warning repeats within each tier, in blocks. Roughly: every
 //! 17 hours while far out, every 2.4 hours inside a week, every half hour in the
 //! final day -- about 140 loud events across a 30-day window at 60s spacing.
 constexpr int DISTANT_INTERVAL_BLOCKS = 1000;
-constexpr int NEAR_INTERVAL_BLOCKS = 144;
+constexpr int APPROACHING_INTERVAL_BLOCKS = 144;
 constexpr int IMMINENT_INTERVAL_BLOCKS = 30;
 } // namespace
 
@@ -41,19 +41,8 @@ TerminalWarningTier TerminalTierFor(int blocks_remaining, int64_t seconds_per_bl
 
     const int64_t seconds_remaining = static_cast<int64_t>(blocks_remaining) * seconds_per_block;
     if (seconds_remaining <= IMMINENT_THRESHOLD_SECONDS) return TerminalWarningTier::IMMINENT;
-    if (seconds_remaining <= NEAR_THRESHOLD_SECONDS) return TerminalWarningTier::NEAR;
+    if (seconds_remaining <= APPROACHING_THRESHOLD_SECONDS) return TerminalWarningTier::APPROACHING;
     return TerminalWarningTier::DISTANT;
-}
-
-const char* TerminalTierName(TerminalWarningTier tier)
-{
-    switch (tier) {
-    case TerminalWarningTier::IMMINENT: return "imminent";
-    case TerminalWarningTier::NEAR: return "near";
-    case TerminalWarningTier::DISTANT: return "distant";
-    case TerminalWarningTier::NONE: return "none";
-    }
-    return "none";
 }
 
 bool TerminalLoudWarningDue(int height, int blocks_remaining, int64_t seconds_per_block)
@@ -65,7 +54,7 @@ bool TerminalLoudWarningDue(int height, int blocks_remaining, int64_t seconds_pe
     int interval;
     switch (TerminalTierFor(blocks_remaining, seconds_per_block)) {
     case TerminalWarningTier::IMMINENT: interval = IMMINENT_INTERVAL_BLOCKS; break;
-    case TerminalWarningTier::NEAR: interval = NEAR_INTERVAL_BLOCKS; break;
+    case TerminalWarningTier::APPROACHING: interval = APPROACHING_INTERVAL_BLOCKS; break;
     case TerminalWarningTier::DISTANT: interval = DISTANT_INTERVAL_BLOCKS; break;
     case TerminalWarningTier::NONE: return false;
     }

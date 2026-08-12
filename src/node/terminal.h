@@ -72,10 +72,12 @@ bilingual_str TerminalWarningMessage(int terminal_height, int blocks_remaining, 
  * time and insistent when there is not.
  */
 enum class TerminalWarningTier {
-    NONE,     //!< outside the warning window
-    DISTANT,  //!< more than 7 days out
-    NEAR,     //!< inside 7 days
-    IMMINENT, //!< inside 24 hours
+    NONE,        //!< outside the warning window
+    DISTANT,     //!< more than 7 days out
+    APPROACHING, //!< inside 7 days. Not NEAR: minwindef.h defines that as an
+                 //!< empty macro, so the enumerator vanishes on a Windows build
+                 //!< and the enum fails to compile.
+    IMMINENT,    //!< inside 24 hours
 };
 
 /** The tier that applies `blocks_remaining` before the halt. */
@@ -85,8 +87,5 @@ TerminalWarningTier TerminalTierFor(int blocks_remaining, int64_t seconds_per_bl
  *  height. Quiet blocks still carry the warning on the per-block UpdateTip line
  *  and in the `warnings` RPC field, which cost nothing extra. */
 bool TerminalLoudWarningDue(int height, int blocks_remaining, int64_t seconds_per_block);
-
-/** Human-readable tier name, for logs. */
-const char* TerminalTierName(TerminalWarningTier tier);
 
 #endif // BITCOIN_NODE_TERMINAL_H

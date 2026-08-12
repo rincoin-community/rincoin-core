@@ -153,14 +153,14 @@ BOOST_AUTO_TEST_CASE(terminal_warning_tiers)
     constexpr int DAY = 24 * 60;          // blocks per day at 60s
     BOOST_CHECK(TerminalTierFor(30 * DAY, SPACING) == TerminalWarningTier::DISTANT);
     BOOST_CHECK(TerminalTierFor(8 * DAY, SPACING) == TerminalWarningTier::DISTANT);
-    BOOST_CHECK(TerminalTierFor(7 * DAY, SPACING) == TerminalWarningTier::NEAR);
-    BOOST_CHECK(TerminalTierFor(2 * DAY, SPACING) == TerminalWarningTier::NEAR);
+    BOOST_CHECK(TerminalTierFor(7 * DAY, SPACING) == TerminalWarningTier::APPROACHING);
+    BOOST_CHECK(TerminalTierFor(2 * DAY, SPACING) == TerminalWarningTier::APPROACHING);
     BOOST_CHECK(TerminalTierFor(DAY, SPACING) == TerminalWarningTier::IMMINENT);
     BOOST_CHECK(TerminalTierFor(1, SPACING) == TerminalWarningTier::IMMINENT);
     BOOST_CHECK(TerminalTierFor(-1, SPACING) == TerminalWarningTier::NONE);
 
     // Halving the spacing doubles the block count each tier covers.
-    BOOST_CHECK(TerminalTierFor(10 * DAY, 30) == TerminalWarningTier::NEAR);
+    BOOST_CHECK(TerminalTierFor(10 * DAY, 30) == TerminalWarningTier::APPROACHING);
 }
 
 BOOST_AUTO_TEST_CASE(terminal_loud_warning_cadence)
@@ -176,10 +176,10 @@ BOOST_AUTO_TEST_CASE(terminal_loud_warning_cadence)
     // Inside a week the interval tightens to 144, so a height that is a
     // multiple of 144 but not of 1000 now warns where, one tier out, it would
     // have stayed quiet.
-    const int near_height = 838512;  // 1488 blocks out: ~24.8h, so NEAR not IMMINENT
+    const int near_height = 838512;  // 1488 blocks out: ~24.8h, so APPROACHING not IMMINENT
     BOOST_CHECK_EQUAL(near_height % 144, 0);
     BOOST_CHECK_NE(near_height % 1000, 0);
-    BOOST_CHECK(TerminalTierFor(H - near_height, SPACING) == TerminalWarningTier::NEAR);
+    BOOST_CHECK(TerminalTierFor(H - near_height, SPACING) == TerminalWarningTier::APPROACHING);
     BOOST_CHECK(TerminalLoudWarningDue(near_height, H - near_height, SPACING));
     BOOST_CHECK(!TerminalLoudWarningDue(near_height + 1, H - near_height - 1, SPACING));
 
