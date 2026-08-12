@@ -211,7 +211,7 @@ This will:
 #### Combined Options
 
 ```bash
-./contrib/build_release.sh v1.0.2 https://github.com/Rin-coin/rincoin.git --clean
+./contrib/build_release.sh v1.0.2 https://github.com/rincoin-community/rincoin-core.git --clean
 ```
 
 #### Platform Switches
@@ -731,9 +731,9 @@ gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
 
 For build-related issues:
 
-- GitHub Issues: https://github.com/Rin-coin/rincoin/issues
-- Discord: https://discord.gg/Ap7TUXYRBf
-- Documentation: https://www.rincoin.net/
+- GitHub Issues: https://github.com/rincoin-community/rincoin-core/issues
+- Discord: https://discord.gg/XFDkSqeUPQ
+- Documentation: https://www.rincoin.tech
 
 ## License
 

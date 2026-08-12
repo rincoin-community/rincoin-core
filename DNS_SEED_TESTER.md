@@ -78,7 +78,7 @@ Options:
 
 Test a specific DNS seed:
 ```bash
-./test-dns-seeds -seed=seed.rincoin.net
+./test-dns-seeds -seed=seed.rincoin.tech
 ```
 
 Test with specific service bits (e.g., NODE_NETWORK = 0x1):
@@ -93,7 +93,7 @@ Get verbose output showing all returned IP addresses:
 
 Test multiple specific seeds:
 ```bash
-./test-dns-seeds -seed=seed1.rincoin.net -seed=seed2.rincoin.net
+./test-dns-seeds -seed=seed1.rincoin.tech -seed=seed2.rincoin.tech
 ```
 
 Limit the number of IPs requested:
@@ -133,15 +133,15 @@ Service Bits: 0x0
 Timeout: 5 seconds
 
 Found 1 DNS seed(s) to test:
-  1. seed.rincoin.net
+  1. seed.rincoin.tech
 
 ======================================================================
  Testing DNS Seeds
 ======================================================================
 
-[1/1] Testing: seed.rincoin.net
+[1/1] Testing: seed.rincoin.tech
 ----------------------------------------------------------------------
-Query hostname: seed.rincoin.net
+Query hostname: seed.rincoin.tech
 Resolving... OK
 Addresses returned: 125
 
@@ -178,7 +178,7 @@ End Time: 2026-02-05 10:30:47
 The tool mimics the DNS seed resolution logic from Rincoin Core's `ThreadDNSAddressSeed()` function:
 
 1. Reads DNS seed hostnames from chainparams (just like the Core client)
-2. Optionally prepends service bit filter (e.g., `x1.seed.rincoin.net`)
+2. Optionally prepends service bit filter (e.g., `x1.seed.rincoin.tech`)
 3. Performs DNS lookup using `LookupHost()` (same function as Core)
 4. Displays all returned IP addresses
 5. Provides success/failure statistics
