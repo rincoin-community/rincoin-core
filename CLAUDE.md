@@ -27,22 +27,21 @@ Four remotes, and knowing which is which matters when reading history:
 | `legacy` | `Rin-coin/rincoin` | Original upstream maintainer's repo; stale. |
 | `litecoin` | `litecoin-project/litecoin` | Original upstream; useful for `git diff`/blame against unmodified Litecoin. |
 
-Branches:
+Branches (see [BRANCHES.md](BRANCHES.md), which is the public statement of this):
 
-- `dev/driftwood` — **active development branch; work here unless told otherwise.**
-- `master` — kept level with `dev/driftwood`, so the default branch always
-  carries the current fixes rather than going stale between releases.
-- `driftwood/**` — feature branches merged into `dev/driftwood`.
-- `legacy-1.1` — **a leaf, never merged into anything.** The terminal v1.1.0
-  release: it validates normally up to block 839,999 and then shuts down rather
-  than connect a block at 840,000, because the height-840,000 consensus rules
-  have not been selected yet. Its defining commits are exactly what a successor
-  release must *not* inherit, so they live on this branch alone; a future
-  scenario release branches off `master` and simply never contains them.
+- `dev` — integration branch and the repository default; new work goes there.
+- `master` — production line; updated from `dev` at each release, and release
+  tags are cut on it.
+- `legacy-1.1` — **you are here, and this is a leaf that is never merged into
+  anything.** The terminal v1.1.0 release: it validates normally up to block
+  839,999 and then shuts down rather than connect a block at 840,000, because
+  the height-840,000 consensus rules have not been selected yet. Its defining
+  commits are exactly what a successor release must *not* inherit, which is why
+  they live on this branch alone. Changes here should be limited to critical
+  bug fixes and security fixes for the 1.0/1.1 line.
+- `consensus/<codename>` — a named consensus workstream, cut from `dev`.
 
-CI runs on `master`, `dev/driftwood`, `driftwood/**`, `legacy-1.1`, and all PRs.
-A new long-lived branch needs adding to `push.branches` in
-`.github/workflows/ci.yml` or it runs untested.
+CI runs on `dev`, `master`, `legacy-1.1`, `consensus/**`, and all PRs.
 
 ## Build
 

@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches:
+      - dev
       - master
-      - dev/driftwood
-      - 'driftwood/**'
       - legacy-1.1
+      - 'consensus/**'
   pull_request:
   workflow_dispatch:
 
