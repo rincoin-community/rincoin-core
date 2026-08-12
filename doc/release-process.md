@@ -70,7 +70,7 @@ Check out the source code in the following directory hierarchy.
     git clone https://github.com/litecoin-project/gitian.sigs.ltc.git
     git clone https://github.com/Rin-coin/rincoin-detached-sigs.git
     git clone https://github.com/devrandom/gitian-builder.git
-    git clone https://github.com/Rin-coin/rincoin.git
+    git clone https://github.com/rincoin-community/rincoin-core.git
 
 ### Litecoin maintainers/release engineers, suggestion for writing release notes
 

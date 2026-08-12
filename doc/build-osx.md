@@ -66,7 +66,7 @@ brew install berkeley-db4
 
 1. Clone the Rincoin Core source code:
     ```shell
-    git clone https://github.com/Rin-coin/rincoin
+    git clone https://github.com/rincoin-community/rincoin-core
     cd litecoin
     ```
 

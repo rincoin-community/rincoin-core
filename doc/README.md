@@ -1,84 +1,106 @@
-Rincoin Core
-=============
+# Rincoin Core Documentation
 
-Setup
----------------------
-Rincoin Core is the original Litecoin client and it builds the backbone of the network. It downloads and, by default, stores the entire history of Litecoin transactions, which requires approximately 22 gigabytes of disk space. Depending on the speed of your computer and network connection, the synchronization process can take anywhere from a few hours to a day or more.
+This directory contains Rincoin-specific documentation together with technical documentation inherited from Bitcoin Core and Litecoin Core.
 
-To download Rincoin Core, visit [litecoin.org](https://litecoin.org/).
+For Rincoin consensus and network behaviour, the **source code is authoritative**. Rincoin-specific documentation should be preferred over inherited upstream documentation where the two differ.
 
-Running
----------------------
+## Quickstart Guide
+
+### Setup 
+
+Rincoin Core is the Rincoin client and it builds the backbone of the network. It downloads and, by default, stores the entire history of Rincoin transactions, which requires approximately 1 gigabyte of disk space (August 2026). Depending on the speed of your computer and network connection, the synchronization process can take anywhere from a few hours to a day or more - the whole blockchain must be downloaded and hashes of all blocks checked first.
+
+To download Rincoin Core, visit [releases](https://github.com/rincoin-community/rincoin-core/releases).
+
+### Running
+
 The following are some helpful notes on how to run Rincoin Core on your native platform.
 
-### Unix
+#### Unix
 
 Unpack the files into a directory and run:
 
 - `bin/rincoin-qt` (GUI) or
 - `bin/rincoind` (headless)
 
-### Windows
+#### Windows
 
-Unpack the files into a directory, and then run rincoin-qt.exe.
+Unpack the files into a directory, and then run `rincoin-qt.exe`.
 
-### macOS
+#### macOS
 
 Drag Rincoin Core to your applications folder, and then run Rincoin Core.
 
-### Need Help?
 
-* See the documentation at the [Litecoin Wiki](https://litecoin.info/) for help and more information.
-* Ask for help on [#litecoin](https://webchat.freenode.net/#litecoin) on Freenode. If you don't have an IRC client, use [webchat here](https://webchat.freenode.net/#litecoin).
-* Ask for help on the [LitecoinTalk](https://litecointalk.io/) forums, in the [Technical Support board](https://litecointalk.io/c/technical-support).
+## Rincoin-specific documentation
 
-Building
----------------------
-The following are developer notes on how to build Rincoin Core on your native platform. They are not complete guides, but include notes on the necessary libraries, compile flags, etc.
+- [`rincoin-parameters.md`](rincoin-parameters.md) — network and consensus parameters, with references to their implementation.
+- [`release-notes-rincoin.md`](release-notes-rincoin.md) — consolidated Rincoin release history.
+- [`build-rincoin-release.md`](build-rincoin-release.md) — Rincoin release build instructions.
 
-- [Dependencies](dependencies.md)
-- [macOS Build Notes](build-osx.md)
-- [Unix Build Notes](build-unix.md)
-- [Windows Build Notes](build-windows.md)
-- [FreeBSD Build Notes](build-freebsd.md)
-- [OpenBSD Build Notes](build-openbsd.md)
-- [NetBSD Build Notes](build-netbsd.md)
-- [Gitian Building Guide (External Link)](https://github.com/bitcoin-core/docs/blob/master/gitian-building.md)
+Project-wide development documents are in the repository root:
 
-Development
----------------------
-The Litecoin repo's [root README](/README.md) contains relevant information on the development process and automated testing.
+- [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — how to contribute.
+- [`../GOVERNANCE.md`](../GOVERNANCE.md) — development roles and decision-making.
+- [`../SECURITY.md`](../SECURITY.md) — reporting security vulnerabilities.
+- [`../BRANCHES.md`](../BRANCHES.md) — purpose and status of the main repository branches.
 
-- [Developer Notes](developer-notes.md)
-- [Productivity Notes](productivity.md)
-- [Release Notes](release-notes.md)
-- [Release Process](release-process.md)
-- [Source Code Documentation (External Link)](https://doxygen.bitcoincore.org/)
-- [Translation Process](translation_process.md)
-- [Translation Strings Policy](translation_strings_policy.md)
-- [JSON-RPC Interface](JSON-RPC-interface.md)
-- [Unauthenticated REST Interface](REST-interface.md)
-- [Shared Libraries](shared-libraries.md)
-- [BIPS](bips.md)
-- [Dnsseed Policy](dnsseed-policy.md)
-- [Benchmarking](benchmarking.md)
+## Building
 
-### Resources
-* Discuss on the [LitecoinTalk](https://litecointalk.io/) forums.
-* Discuss general Litecoin development on #litecoin-dev on Freenode. If you don't have an IRC client, use [webchat here](https://webchat.freenode.net/#litecoin-dev).
+- [`dependencies.md`](dependencies.md) — build dependencies.
+- [`build-unix.md`](build-unix.md) — Linux and other Unix-like systems.
+- [`build-windows.md`](build-windows.md) — Windows.
+- [`build-osx.md`](build-osx.md) — macOS.
+- [`build-freebsd.md`](build-freebsd.md) — FreeBSD.
+- [`build-openbsd.md`](build-openbsd.md) — OpenBSD.
+- [`build-netbsd.md`](build-netbsd.md) — NetBSD.
 
-### Miscellaneous
-- [Assets Attribution](assets-attribution.md)
-- [bitcoin.conf Configuration File](bitcoin-conf.md)
-- [Files](files.md)
-- [Fuzz-testing](fuzzing.md)
-- [Reduce Memory](reduce-memory.md)
-- [Reduce Traffic](reduce-traffic.md)
-- [Tor Support](tor.md)
-- [Init Scripts (systemd/upstart/openrc)](init.md)
-- [ZMQ](zmq.md)
-- [PSBT support](psbt.md)
+Some build documents originate upstream. Package names, paths, optional features, or release procedures may require Rincoin-specific adjustments.
 
-License
----------------------
-Distributed under the [MIT software license](/COPYING).
+## Development and interfaces
+
+- [`developer-notes.md`](developer-notes.md) — developer notes and coding practices.
+- [`JSON-RPC-interface.md`](JSON-RPC-interface.md) — JSON-RPC interface.
+- [`REST-interface.md`](REST-interface.md) — REST interface.
+- [`shared-libraries.md`](shared-libraries.md) — shared libraries.
+- [`descriptors.md`](descriptors.md) — output descriptors.
+- [`psbt.md`](psbt.md) — PSBT support.
+- [`zmq.md`](zmq.md) — ZeroMQ notifications.
+- [`fuzzing.md`](fuzzing.md) — fuzz testing.
+- [`benchmarking.md`](benchmarking.md) — benchmarking.
+- [`files.md`](files.md) — data files and directories.
+- [`tor.md`](tor.md) — Tor support.
+- [`reduce-memory.md`](reduce-memory.md) — reducing memory usage.
+- [`reduce-traffic.md`](reduce-traffic.md) — reducing network traffic.
+
+## Mining and network infrastructure
+
+Rincoin-specific network and Proof-of-Work parameters are documented in [`rincoin-parameters.md`](rincoin-parameters.md).
+
+The implementation itself remains the source of truth, in particular:
+
+- `src/chainparams.cpp` — network parameters and activation heights;
+- `src/consensus/` — consensus definitions;
+- `src/pow.cpp` — difficulty adjustment and Proof-of-Work checks;
+- `src/crypto/rinhash.cpp` — RinHash implementation.
+
+Infrastructure operators should also review repository documentation and release notes for changes affecting peer compatibility, DNS seeds, protocol versions, or deployment.
+
+## Release history and upstream documentation
+
+[`release-notes-rincoin.md`](release-notes-rincoin.md) is the Rincoin release history.
+
+The directories below are retained as upstream reference material:
+
+- [`bitcoin-release-notes/`](bitcoin-release-notes/)
+- [`litecoin-release-notes/`](litecoin-release-notes/)
+
+They document the projects from which Rincoin Core descends and are useful when tracing inherited code or evaluating upstream fixes. They are **not Rincoin release notes**.
+
+Several other documents in this directory also originate from Bitcoin Core or Litecoin Core. Upstream terminology or defaults appearing in those documents should not be assumed to describe the Rincoin network. When in doubt, verify against the Rincoin source code and [`rincoin-parameters.md`](rincoin-parameters.md).
+
+## Community and support
+
+- Website: https://www.rincoin.tech
+- Development: https://github.com/rincoin-community
+- Discord: https://discord.gg/XFDkSqeUPQ
