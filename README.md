@@ -103,12 +103,20 @@ See `GetPoWHash()` and [`src/crypto/rinhash.cpp`](src/crypto/rinhash.cpp) for th
 
 ## Building Rincoin Core
 
-Build instructions are maintained in the repository:
+Rincoin Core builds with autotools:
 
+```bash
+./autogen.sh && ./configure && make
+```
+
+Build dependencies and the per-platform detail are documented in the repository:
+
+* [Dependencies](doc/dependencies.md) — libraries and minimum versions
 * [Linux / Unix build notes](doc/build-unix.md)
 * [Windows build notes](doc/build-windows.md)
 * [macOS build notes](doc/build-osx.md)
-* [Release build guide](doc/build-rincoin-release.md)
+* [FreeBSD build notes](doc/build-freebsd.md) · [OpenBSD](doc/build-openbsd.md) · [NetBSD](doc/build-netbsd.md)
+* [Release build guide](doc/build-rincoin-release.md) — reproducing the released binaries
 
 Developers should build from a reviewed branch or release appropriate to their use case. Consensus-sensitive deployments should not assume that arbitrary development commits are production releases.
 
