@@ -4233,7 +4233,10 @@ bool ChainstateManager::ProcessNewBlockHeaders(const std::vector<CBlockHeader>& 
         auto batch_end = std::chrono::steady_clock::now();
         int64_t batch_us = std::chrono::duration_cast<std::chrono::microseconds>(batch_end - batch_start).count();
         if (hdr_count > 0) {
-            LogPrintf("HEADERSYNC-PERF: batch=%d new=%d dup=%d total=%lldus "
+            // Timing instrumentation: BENCH category, so it stays out of the
+            // default log and appears only under -debug=bench.
+            LogPrint(BCLog::BENCH,
+                      "HEADERSYNC-PERF: batch=%d new=%d dup=%d total=%lldus "
                       "phase1=%lldus(%.1f%%) dgw_parallel=%lldus(%.1f%%) "
                       "per_hdr=%lldus\n",
                       hdr_count, new_count, dup_count, batch_us,
