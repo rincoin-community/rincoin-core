@@ -1,10 +1,8 @@
 # Rincoin Core — Release History
 
-> **Maintenance note — pre-release reconciliation pending.**
-> **Status: active — this is the canonical Rincoin release history.** A separate
-> detailed narrative at [`../release-notes-rincoin.md`](../release-notes-rincoin.md)
-> (repo root) is currently stale; the two will be reconciled before the next
-> release so this file remains the single source of truth.
+> **Status: active — this is the canonical Rincoin release history.** The
+> separate detailed narrative that used to sit in the repository root has been
+> folded into this file and removed, so this is now the single source of truth.
 
 This is the consolidated release history for **Rincoin Core**. It complements,
 rather than replaces, the upstream per-version notes archived under
@@ -20,7 +18,7 @@ corresponds to the Litecoin `v0.21.4` base.
 
 ---
 
-## Unreleased — current development
+## v1.1.0 — terminal release for the 1.0/1.1 lineage
 
 > ## ⚠ This is a terminal release: it stops at block height 840,000
 >
@@ -135,14 +133,14 @@ work only. Highlights so far:
   > mainnet activation should ultimately be brought forward, deferred, or left at
   > its already-defined height is a separate decision for the community, and that
   > discussion is treated as such.
-- **Peer-protocol-version floor is now a height schedule.** The single
-  height/version floor is replaced by a sorted list of `{height, min_version}`
-  entries (`Consensus::Params::vMinPeerProtoVersionFloors`) so the floor can be
-  raised at successive heights as the protocol is bumped over time. Current
-  schedule requires `70017` (MWEB-capable) from genesis and `70018` (RinHash) at
-  each network's existing floor height. This is networking policy only and does
-  not affect block validity; effective behaviour is unchanged for the peers on
-  the network today (which already advertise `70017`+).
+- **Peer-protocol-version floor flattened to `70017` on every network.** The
+  floor is a sorted list of `{height, min_version}` entries
+  (`Consensus::Params::vMinPeerProtoVersionFloors`) so it can be raised at
+  successive heights as the protocol is bumped. This release makes no protocol
+  bump, so there is nothing to gate: every network now carries a single
+  `{0, 70017}` entry and the previously scheduled step to `70018` is gone. The
+  mechanism is retained for a future release. Networking policy only; it does
+  not affect block validity.
 - **Block-download timeout floored at Litecoin's 150 s spacing.** The P2P
   block-download timeout scales with `nPowTargetSpacing` (a peer is dropped if a
   requested block stays in flight for ~one block interval). Rincoin's 60 s
@@ -157,8 +155,8 @@ work only. Highlights so far:
 - **Continuous integration:** a GitHub Actions workflow runs the upstream
   container-based CI harness with two legs — a plain unit+functional build and
   an ASan/UBSan build. The gate is headless (core unit tests + functional
-  suite); Qt GUI test vectors are a separate follow-up. Each run publishes a
-  downloadable `test-results-<leg>` artifact.
+  suite) and the Qt GUI suite now passes too. Each run publishes a downloadable
+  `test-results-<leg>` artifact.
 - **Test suite made green:** rebranded the `bitcoin-util` test fixtures to
   `rincoin-tx` with Rincoin addresses, dropped the stale Litecoin smoke
   benchmark from `make check`, and added UBSan suppressions for the intentional
@@ -200,8 +198,26 @@ work only. Highlights so far:
   ASan/UBSan leg and a fast plain gcc leg for unit-suite or functional-test
   iteration. All are for local testing only and keep their outputs and caches out
   of the repository.
+- **Checkpoints extended through height 693,782.** 86 new mainnet entries from
+  436,187 onward, raising the fork-rejection floor to within a few hundred
+  blocks of the tip. Every entry in the map — all 211 — was verified against
+  `getblockhash` on a node synced from production chain data before being
+  committed; a wrong checkpoint hash is silently ignored rather than reported,
+  so checking against a real chain is the only thing that catches one.
+- **Qt test suite de-Litecoined.** `uritests` and `wallettests` used the
+  `litecoin:` URI scheme where the code speaks `rincoin:`, and `rpcnestedtests`
+  expected Bitcoin's genesis coinbase txid. `make check` is green including the
+  Qt binary.
+- **Release builds run in parallel.** Each target — two glibc baselines for
+  x86_64 and aarch64, Windows, macOS — is now its own CI job, taking the release
+  build from just over two hours to about half an hour, with per-target
+  artifacts and a single job that assembles and checksums the whole release.
+- **Header-sync timing moved to the `bench` log category.** `HEADERSYNC-PERF`
+  lines were written unconditionally during sync; they are now silent by default
+  and available with `-debug=bench`.
 - **Docs:** added [`doc/rincoin-parameters.md`](rincoin-parameters.md) and this
-  consolidated history.
+  consolidated history, plus project documentation covering governance,
+  branches, contributing and security.
 
 > **Acknowledgement.** Some of the above test-suite adaptations overlap with
 > work in the parallel Aevust fork, which reached a number of them first; a few
@@ -210,7 +226,9 @@ work only. Highlights so far:
 > **test and tooling changes only** — consensus rules are decided and
 > implemented independently by this project.
 
-No public version number is assigned to this development line yet.
+This line ends here. `legacy-1.1` is tagged and released from, but never
+merged forward: the changes that make it stop at height 840,000 are exactly
+the changes a successor release must not inherit.
 
 ---
 

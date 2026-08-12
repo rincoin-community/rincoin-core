@@ -163,8 +163,7 @@ Rincoin behaviour", start here:
   `net:`, `test:`, `consensus:`, `doc:`, `ci:`, `build:`, `policy:`,
   `contrib:`. Doc-only commits use a `[skip ci]` suffix.
 - Release notes: [doc/release-notes-rincoin.md](doc/release-notes-rincoin.md) is
-  canonical; the root-level `release-notes-rincoin.md` is a longer v1.1.0
-  narrative still being reconciled into it. Upstream notes under
+  the single Rincoin release history. Upstream notes under
   `doc/bitcoin-release-notes/` and `doc/litecoin-release-notes/` are historical
   reference only and are not Rincoin's.
 - Line endings: `.gitattributes` forces LF for shell, Python, autotools, and
