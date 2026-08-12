@@ -155,8 +155,8 @@ Rincoin behaviour", start here:
 - **Test framework** — [test/functional/test_framework/rinhash.py](test/functional/test_framework/rinhash.py)
   (block-id computation) and `rin_util.py`; `rin_replacebyfee.py`.
 - **DNS-seed tester** — [src/test-dns-seeds.cpp](src/test-dns-seeds.cpp),
-  [DNS_SEED_TESTER.md](DNS_SEED_TESTER.md), built via
-  [Makefile.test-dns-seeds](Makefile.test-dns-seeds).
+  [doc/dns-seed-tester.md](doc/dns-seed-tester.md). It is built by the normal
+  build as a `noinst_PROGRAMS` target.
 
 ## Conventions
 
@@ -166,8 +166,7 @@ Rincoin behaviour", start here:
   `net:`, `test:`, `consensus:`, `doc:`, `ci:`, `build:`, `policy:`,
   `contrib:`. Doc-only commits use a `[skip ci]` suffix.
 - Release notes: [doc/release-notes-rincoin.md](doc/release-notes-rincoin.md) is
-  canonical; the root-level `release-notes-rincoin.md` is a longer v1.1.0
-  narrative still being reconciled into it. Upstream notes under
+  the single Rincoin release history. Upstream notes under
   `doc/bitcoin-release-notes/` and `doc/litecoin-release-notes/` are historical
   reference only and are not Rincoin's.
 - Line endings: `.gitattributes` forces LF for shell, Python, autotools, and

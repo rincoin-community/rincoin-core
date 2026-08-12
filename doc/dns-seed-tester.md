@@ -12,10 +12,13 @@ This tool queries DNS seed servers using the same methods as the Rincoin Core cl
 
 ## Building
 
-### Quick Build
+### Build
+
+`test-dns-seeds` is a `noinst_PROGRAMS` target of the normal build, so an
+ordinary build produces it at `src/test-dns-seeds`:
 
 ```bash
-./build-test-dns-seeds.sh
+./autogen.sh && ./configure && make
 ```
 
 ### Building with Rincoin Core
@@ -223,7 +226,6 @@ When developing a DNS seeder, use this tool to verify:
 ### Build errors
 - Ensure you have built Rincoin Core first (`./configure && make`)
 - Check that all dependencies are installed
-- Try the quick build script: `./build-test-dns-seeds.sh`
 
 ## Integration with CI/CD
 
@@ -242,8 +244,8 @@ fi
 ## Files
 
 - `src/test-dns-seeds.cpp` - Main tool implementation
-- `build-test-dns-seeds.sh` - Quick build script
-- `DNS_SEED_TESTER.md` - This README
+- `src/Makefile.am` - Build wiring (`noinst_PROGRAMS`)
+- `doc/dns-seed-tester.md` - This README
 
 ## See Also
 

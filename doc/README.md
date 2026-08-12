@@ -37,6 +37,7 @@ Drag Rincoin Core to your applications folder, and then run Rincoin Core.
 - [`rincoin-parameters.md`](rincoin-parameters.md) — network and consensus parameters, with references to their implementation.
 - [`release-notes-rincoin.md`](release-notes-rincoin.md) — consolidated Rincoin release history.
 - [`build-rincoin-release.md`](build-rincoin-release.md) — Rincoin release build instructions.
+- [`dns-seed-tester.md`](dns-seed-tester.md) — the DNS-seed testing utility.
 
 Project-wide development documents are in the repository root:
 
