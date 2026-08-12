@@ -35,7 +35,7 @@ In order to build the Bitcoin Core a static build of Qt is required. The runtime
 
 Some prebuilt x64 versions of Qt can be downloaded from [here](https://github.com/sipsorcery/qt_win_binary/releases). Please be aware these downloads are NOT officially sanctioned by Bitcoin Core and are provided for developer convenience only. They should NOT be used for builds that will be used in a production environment or with real funds.
 
-To determine which Qt prebuilt version to download open the `.appveyor.yml` file and note the `QT_DOWNLOAD_URL`. When extracting the zip file the destination path must be set to `C:\`. This is due to the way that Qt includes, libraries and tools use internal paths.
+To determine which Qt prebuilt version to download, consult the upstream Bitcoin Core `.appveyor.yml` (Rincoin does not carry one; see the note below). When extracting the zip file the destination path must be set to `C:\`. This is due to the way that Qt includes, libraries and tools use internal paths.
 
 To build Bitcoin Core without Qt unload or disable the `bitcoin-qt`, `libbitcoin_qt` and `test_bitcoin-qt` projects.
 
@@ -69,9 +69,11 @@ msbuild /m bitcoin.sln /p:Platform=x64 /p:Configuration=Release /t:build
 
 AppVeyor
 ---------------------
-The .appveyor.yml in the root directory is suitable to perform builds on [AppVeyor](https://www.appveyor.com/) Continuous Integration servers. The simplest way to perform an AppVeyor build is to fork Bitcoin Core and then configure a new AppVeyor Project pointing to the forked repository.
-
-For safety reasons the Bitcoin Core .appveyor.yml file has the artifact options disabled. The build will be performed but no executable files will be available. To enable artifacts on a forked repository uncomment the lines shown below:
+Rincoin does not ship an AppVeyor configuration: CI runs on GitHub Actions
+(`.github/workflows/`), and Windows release binaries are cross-compiled from
+Linux (see [doc/build-rincoin-release.md](../doc/build-rincoin-release.md)).
+Upstream Bitcoin Core's `.appveyor.yml` can be used as a starting point if you
+want AppVeyor builds of your own fork:
 
 ```
     #- 7z a bitcoin-%APPVEYOR_BUILD_VERSION%.zip %APPVEYOR_BUILD_FOLDER%\build_msvc\%platform%\%configuration%\*.exe
