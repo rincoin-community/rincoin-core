@@ -38,7 +38,28 @@ export CCACHE_DIR=/ccache
 # --- Sync source into the persistent build volume --------------------------
 mkdir -p /build/rincoin
 # No --delete on the main sync: preserve the incremental build objects.
-rsync -a --exclude=.git /src/ /build/rincoin/
+#
+# Autotools output generated on the host is excluded deliberately. Those files
+# embed absolute host paths -- a Makefile built in /home/you/rincoin points at
+# /home/you/rincoin/build-aux/missing, which does not exist in the container --
+# so copying them in makes the build fail on any host tree that has been built
+# in place. Skipping them lets ./autogen.sh + ./configure regenerate everything
+# against the container's own paths, which is what CI does from a clean
+# checkout.
+rsync -a --exclude=.git \
+      --exclude=/Makefile --exclude='Makefile.in' \
+      --exclude=/configure --exclude='/configure~' \
+      --exclude=/config.status --exclude=/config.log \
+      --exclude=/aclocal.m4 --exclude=/libtool \
+      --exclude=/autom4te.cache --exclude=/libbitcoinconsensus.pc \
+      --exclude=/src/config/bitcoin-config.h \
+      --exclude=/build-aux/missing --exclude=/build-aux/install-sh \
+      --exclude=/build-aux/depcomp --exclude=/build-aux/compile \
+      --exclude=/build-aux/config.guess --exclude=/build-aux/config.sub \
+      --exclude=/build-aux/ltmain.sh --exclude=/build-aux/test-driver \
+      --exclude=/db4 --exclude=/release-builds --exclude=/.build-cache \
+      --exclude=/tmp \
+      /src/ /build/rincoin/
 # The test tree holds no build artifacts, so mirror it with --delete to drop any
 # stale scripts left behind by renames/removals in the source. Keep the
 # configure-generated test/config.ini and any __pycache__.

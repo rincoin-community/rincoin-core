@@ -80,10 +80,14 @@ BOOST_AUTO_TEST_CASE(terminal_overrides_rejected_on_mainnet)
     // Fail closed: the terminal height of a release build is fixed. A mainnet
     // invocation that tries to move, disable, or re-enable it must be refused
     // loudly rather than silently ignored.
+    // SelectParams first: it replaces the globalChainParams unique_ptr, freeing
+    // whatever Params() previously returned. Taking the reference before the
+    // call leaves it dangling, which ASan correctly flags as a use-after-free.
+    SelectParams(CBaseChainParams::MAIN);
+    CChainParams& mainnet = const_cast<CChainParams&>(Params());
+
     ArgsManager args;
     args.ForceSetArg("-terminalheight", "1");
-    CChainParams& mainnet = const_cast<CChainParams&>(Params());
-    SelectParams(CBaseChainParams::MAIN);
     BOOST_CHECK_THROW(mainnet.UpdateTerminalParametersFromArgs(args), std::runtime_error);
 
     ArgsManager lead_args;
