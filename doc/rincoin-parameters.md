@@ -170,6 +170,29 @@ and then shuts down rather than connect a block at it.
 Derived values on mainnet: the last block this release will ever connect is
 `839,999`, and the persistent warning begins at `840,000 − 43,200 = 796,800`.
 
+How the warning is delivered, once inside that window:
+
+| Channel | Cadence |
+| ------- | ------- |
+| `warnings` field of `getblockchaininfo`, `getnetworkinfo`, `getmininginfo` | refreshed every block |
+| `debug.log`, on the existing per-block `UpdateTip` line (`warning='...'`) | every block, no extra log lines |
+| `debug.log`, own `***` line + `-alertnotify` + one desktop notification in the GUI | on the escalating cadence below, and once at startup |
+| GUI status-bar strip, visible on every tab | refreshed every block |
+
+The loud cadence tightens as the height approaches, so the warning is quiet
+while there is time to act and insistent when there is not. Tiers are defined in
+time, so they hold for any block spacing:
+
+| Distance | Interval | Roughly | Count over a 30-day window |
+| -------- | -------- | ------- | -------------------------- |
+| more than 7 days | every 1,000 blocks | ~17 h | ~33 |
+| 7 days to 24 h | every 144 blocks | ~2.4 h | ~60 |
+| final 24 h | every 30 blocks | ~30 min | ~48 |
+
+The last block before the terminal height always warns, whatever the interval
+says. The cadence is keyed off the absolute height rather than a counter, so a
+restart, a reorg or a resync cannot change how often it fires.
+
 This is **not an activation height and adds no consensus rule.** Below it the
 node is byte-for-byte the same validator as a build without the halt — proven by
 [`test/functional/feature_terminal_neutrality.py`](../test/functional/feature_terminal_neutrality.py),

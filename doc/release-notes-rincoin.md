@@ -35,7 +35,14 @@ corresponds to the Litecoin `v0.21.4` base.
 > **What it does.** It validates normally up to block **839,999**. When a block
 > at 840,000 arrives, it does not connect it: it logs the reason, raises a fatal
 > error and shuts down. From height **796,800** — about 30 days earlier — every
-> node carries a persistent warning counting down the remaining blocks. From the
+> node carries a persistent warning counting down the remaining blocks and naming
+> the estimated date. It appears in the `warnings` field of `getblockchaininfo`,
+> `getnetworkinfo` and `getmininginfo`, on every block in `debug.log`, and in the
+> GUI as a status-bar strip visible on every tab. A louder repeat — its own log
+> line, `-alertnotify`, and a non-blocking desktop notification in the GUI — goes
+> out on a cadence that tightens from roughly every 17 hours to every half hour
+> as the height approaches. Nothing about it blocks the wallet or requires a
+> click. From the
 > moment the next block would be 840,000, `getblocktemplate`, the `generate*`
 > RPCs, `submitblock` and `submitheader` refuse, so a terminal node can never
 > mine the boundary block itself. Restarting a node whose chain has already

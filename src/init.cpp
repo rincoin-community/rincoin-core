@@ -1956,8 +1956,19 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
             return InitError(TerminalHaltMessage(consensus.nTerminalHeight));
         }
         if (consensus.TerminalWarning(chain_active_height)) {
+            // Startup always warns, whatever the tier cadence says: this is the
+            // one moment an operator is certainly looking at the output, and a
+            // long-running node might not repeat it for hours afterwards.
+            //
+            // Log only, deliberately. A ThreadSafeMessageBox here could not
+            // reach the GUI anyway -- during AppInitMain the only handler
+            // connected is noui's, so it would merely duplicate this line onto
+            // stderr. Qt gets its startup visibility from the status-bar strip,
+            // which BitcoinGUI populates from getStatusBarWarnings() as soon as
+            // the client model is attached.
             const bilingual_str warning = TerminalWarningMessage(
-                consensus.nTerminalHeight, consensus.nTerminalHeight - chain_active_height);
+                consensus.nTerminalHeight, consensus.nTerminalHeight - chain_active_height,
+                consensus.nPowTargetSpacing);
             LogPrintf("*** %s\n", warning.original);
             SetMiscWarning(warning);
         }

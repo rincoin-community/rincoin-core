@@ -40,6 +40,13 @@ ClientModel::ClientModel(interfaces::Node& node, OptionsModel *_optionsModel, QO
     peerTableModel = new PeerTableModel(m_node, this);
     banTableModel = new BanTableModel(m_node, this);
 
+    // Re-read the warning text on every new tip. Otherwise the only thing that
+    // refreshes it is NotifyAlertChanged, which the core fires once per process
+    // (see DoWarning's static fWarned), so any warning carrying a countdown --
+    // such as the terminal-height warning -- would display the figure it had at
+    // the moment it first appeared and never move again.
+    connect(this, &ClientModel::numBlocksChanged, this, &ClientModel::updateAlert);
+
     QTimer* timer = new QTimer;
     timer->setInterval(MODEL_UPDATE_DELAY);
     connect(timer, &QTimer::timeout, [this] {

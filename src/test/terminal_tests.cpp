@@ -134,9 +134,63 @@ BOOST_AUTO_TEST_CASE(terminal_messages_name_the_height)
     BOOST_CHECK(halt.original.find("840000") != std::string::npos);
     BOOST_CHECK(!halt.original.empty());
 
-    const bilingual_str warning = TerminalWarningMessage(MAINNET_TERMINAL_HEIGHT, 720);
+    const bilingual_str warning = TerminalWarningMessage(MAINNET_TERMINAL_HEIGHT, 720, 60);
     BOOST_CHECK(warning.original.find("840000") != std::string::npos);
     BOOST_CHECK(warning.original.find("720") != std::string::npos);
+    // 720 blocks at 60s is half a day, and the message says so in time as well
+    // as in blocks -- operators plan in hours and dates, not block counts.
+    BOOST_CHECK(warning.original.find("12h") != std::string::npos);
+}
+
+BOOST_AUTO_TEST_CASE(terminal_warning_tiers)
+{
+    // Tier boundaries are expressed in time, so they hold for any spacing.
+    constexpr int64_t SPACING = 60;
+    constexpr int DAY = 24 * 60;          // blocks per day at 60s
+    BOOST_CHECK(TerminalTierFor(30 * DAY, SPACING) == TerminalWarningTier::DISTANT);
+    BOOST_CHECK(TerminalTierFor(8 * DAY, SPACING) == TerminalWarningTier::DISTANT);
+    BOOST_CHECK(TerminalTierFor(7 * DAY, SPACING) == TerminalWarningTier::NEAR);
+    BOOST_CHECK(TerminalTierFor(2 * DAY, SPACING) == TerminalWarningTier::NEAR);
+    BOOST_CHECK(TerminalTierFor(DAY, SPACING) == TerminalWarningTier::IMMINENT);
+    BOOST_CHECK(TerminalTierFor(1, SPACING) == TerminalWarningTier::IMMINENT);
+    BOOST_CHECK(TerminalTierFor(-1, SPACING) == TerminalWarningTier::NONE);
+
+    // Halving the spacing doubles the block count each tier covers.
+    BOOST_CHECK(TerminalTierFor(10 * DAY, 30) == TerminalWarningTier::NEAR);
+}
+
+BOOST_AUTO_TEST_CASE(terminal_loud_warning_cadence)
+{
+    constexpr int64_t SPACING = 60;
+    constexpr int DAY = 24 * 60;
+    constexpr int H = 840000;
+
+    // Far out: every 1000 blocks and not in between.
+    BOOST_CHECK(TerminalLoudWarningDue(800000, H - 800000, SPACING));
+    BOOST_CHECK(!TerminalLoudWarningDue(800001, H - 800001, SPACING));
+
+    // Inside a week the interval tightens to 144, so a height that is a
+    // multiple of 144 but not of 1000 now warns where, one tier out, it would
+    // have stayed quiet.
+    const int near_height = 838512;  // 1488 blocks out: ~24.8h, so NEAR not IMMINENT
+    BOOST_CHECK_EQUAL(near_height % 144, 0);
+    BOOST_CHECK_NE(near_height % 1000, 0);
+    BOOST_CHECK(TerminalTierFor(H - near_height, SPACING) == TerminalWarningTier::NEAR);
+    BOOST_CHECK(TerminalLoudWarningDue(near_height, H - near_height, SPACING));
+    BOOST_CHECK(!TerminalLoudWarningDue(near_height + 1, H - near_height - 1, SPACING));
+
+    // Inside the final day, every 30 blocks.
+    const int imminent_height = H - 600;
+    BOOST_CHECK(TerminalLoudWarningDue(imminent_height, H - imminent_height, SPACING));
+    BOOST_CHECK(!TerminalLoudWarningDue(imminent_height + 1, H - imminent_height - 1, SPACING));
+
+    // The last block before the halt always warns, whatever the interval says.
+    BOOST_CHECK(TerminalLoudWarningDue(H - 1, 1, SPACING));
+
+    // Cadence is a pure function of height, so a restart or a reorg cannot
+    // change how often it fires.
+    BOOST_CHECK_EQUAL(TerminalLoudWarningDue(800000, H - 800000, SPACING),
+                      TerminalLoudWarningDue(800000, H - 800000, SPACING));
 }
 
 BOOST_AUTO_TEST_CASE(terminal_rpc_allowlist_is_minimal)

@@ -183,6 +183,15 @@ BitcoinGUI::BitcoinGUI(interfaces::Node& node, const PlatformStyle *_platformSty
         progressBar->setStyleSheet("QProgressBar { background-color: #e8e8e8; border: 1px solid grey; border-radius: 7px; padding: 1px; text-align: center; } QProgressBar::chunk { background: QLinearGradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #FF8000, stop: 1 orange); border-radius: 7px; margin: 0px; }");
     }
 
+    // Persistent warning strip. Hidden unless the core reports a warning, and
+    // then visible on every tab rather than only on Overview.
+    labelWarningBar = new QLabel();
+    labelWarningBar->setVisible(false);
+    labelWarningBar->setWordWrap(false);
+    labelWarningBar->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    labelWarningBar->setStyleSheet("QLabel { background-color: qlineargradient(x1: 0, y1: 0, x2: 1, y2: 0, stop:0 #F0D0A0, stop:1 #F8D488); color:#000000; padding: 2px; }");
+
+    statusBar()->addWidget(labelWarningBar);
     statusBar()->addWidget(progressBarLabel);
     statusBar()->addWidget(progressBar);
     statusBar()->addPermanentWidget(frameBlocks);
@@ -592,6 +601,10 @@ void BitcoinGUI::setClientModel(ClientModel *_clientModel, interfaces::BlockAndH
         setNumBlocks(tip_info->block_height, QDateTime::fromTime_t(tip_info->block_time), tip_info->verification_progress, false, SynchronizationState::INIT_DOWNLOAD);
         connect(_clientModel, &ClientModel::numBlocksChanged, this, &BitcoinGUI::setNumBlocks);
 
+        // Keep the persistent warning strip in step with the core's warning text.
+        connect(_clientModel, &ClientModel::alertsChanged, this, &BitcoinGUI::setWarningBar);
+        setWarningBar(_clientModel->getStatusBarWarnings());
+
         // Receive and report messages from client model
         connect(_clientModel, &ClientModel::message, [this](const QString &title, const QString &message, unsigned int style){
             this->message(title, message, style);
@@ -954,6 +967,30 @@ void BitcoinGUI::openOptionsDialogWithTab(OptionsDialog::Tab tab)
     dlg.setCurrentTab(tab);
     dlg.setModel(clientModel->getOptionsModel());
     dlg.exec();
+}
+
+void BitcoinGUI::setWarningBar(const QString& warnings)
+{
+    if (!labelWarningBar) return;
+
+    // GetWarnings(verbose) joins multiple warnings with an <hr /> separator and
+    // may run to several lines. The status bar has room for one line, so show a
+    // single-line summary and put the whole thing in the tooltip.
+    QString oneLine = warnings;
+    oneLine.replace(QLatin1String("<hr />"), QLatin1String(" | "));
+    oneLine = oneLine.simplified();
+
+    labelWarningBar->setVisible(!oneLine.isEmpty());
+    labelWarningBar->setText(oneLine);
+    labelWarningBar->setToolTip(warnings);
+
+    // The strip is easy to overlook, so when the core says a loud warning is due
+    // also raise a desktop notification. Deliberately via the notificator rather
+    // than a QMessageBox: this must catch the eye without taking the focus or
+    // blocking whatever the user is in the middle of.
+    if (!oneLine.isEmpty() && notificator && m_node.terminalNotifyPending()) {
+        notificator->notify(Notificator::Warning, tr("Rincoin"), oneLine);
+    }
 }
 
 void BitcoinGUI::setNumBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, bool header, SynchronizationState sync_state)

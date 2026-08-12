@@ -3,6 +3,10 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
+#if defined(HAVE_CONFIG_H)
+#include <config/bitcoin-config.h>
+#endif
+
 #include <validation.h>
 
 #include <arith_uint256.h>
@@ -2569,10 +2573,37 @@ static void UpdateTip(CTxMemPool& mempool, const CBlockIndex* pindexNew, const C
     // Terminal release: once the tip enters the pre-halt window, warn on every
     // new tip so the remaining-block count stays current and the warning cannot
     // be missed by an operator who only ever looks at one RPC.
+    //
+    // Deliberately outside the IsInitialBlockDownload() guard above: a node
+    // syncing up crosses the window too, and it is the one most likely to be
+    // freshly installed by someone who has not heard about the deadline.
     const Consensus::Params& terminal_consensus = chainParams.GetConsensus();
     if (terminal_consensus.TerminalWarning(pindexNew->nHeight)) {
-        DoWarning(TerminalWarningMessage(terminal_consensus.nTerminalHeight,
-                                         terminal_consensus.nTerminalHeight - pindexNew->nHeight));
+        const int blocks_remaining = terminal_consensus.nTerminalHeight - pindexNew->nHeight;
+        const bilingual_str terminal_warning = TerminalWarningMessage(
+            terminal_consensus.nTerminalHeight, blocks_remaining,
+            terminal_consensus.nPowTargetSpacing);
+
+        // Keep the RPC `warnings` field and the GUI banner current on every
+        // block. SetMiscWarning is just a store; it costs no log output.
+        SetMiscWarning(terminal_warning);
+
+        // Ride the per-block line that UpdateTip already prints, via its
+        // existing warning='...' field. Per-block visibility in the log for
+        // zero additional lines.
+        AppendWarning(warning_messages, terminal_warning);
+
+        // And periodically say it loudly, on an interval that tightens as the
+        // height approaches: a dedicated log line for the daemon, and a flag the
+        // GUI turns into one non-blocking desktop notification. AlertNotify also
+        // re-runs -alertnotify, so an operator's paging hook sees the escalation
+        // rather than a single alert at the start of the window.
+        if (TerminalLoudWarningDue(pindexNew->nHeight, blocks_remaining,
+                                   terminal_consensus.nPowTargetSpacing)) {
+            LogPrintf("*** %s\n", terminal_warning.original);
+            g_terminal_notify_pending = true;
+            AlertNotify(terminal_warning.original);
+        }
     }
 
     LogPrintf("%s: new best=%s height=%d version=0x%08x log2_work=%f tx=%lu date='%s' progress=%f cache=%.1fMiB(%utxo)%s\n", __func__,

@@ -126,6 +126,10 @@ private:
     GUIUtil::ClickableLabel* connectionsControl = nullptr;
     GUIUtil::ClickableLabel* labelBlocksIcon = nullptr;
     QLabel* progressBarLabel = nullptr;
+    //! Persistent warning strip along the bottom of the main window. The
+    //! Overview page has its own alert label, but it is only visible on that
+    //! one tab; this stays put whichever tab the user is on.
+    QLabel* labelWarningBar = nullptr;
     GUIUtil::ClickableProgressBar* progressBar = nullptr;
     QProgressDialog* progressDialog = nullptr;
 
@@ -223,6 +227,9 @@ public Q_SLOTS:
     void setNetworkActive(bool networkActive);
     /** Set number of blocks and last block date shown in the UI */
     void setNumBlocks(int count, const QDateTime& blockDate, double nVerificationProgress, bool headers, SynchronizationState sync_state);
+
+    /** Show or hide the persistent warning strip in the status bar. */
+    void setWarningBar(const QString& warnings);
 
     /** Notify the user of an event from the core network or transaction handling code.
        @param[in] title             the message box / notification title

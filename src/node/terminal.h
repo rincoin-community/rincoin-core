@@ -40,12 +40,53 @@ extern std::atomic_bool g_terminal_halted;
  */
 extern const std::set<std::string> g_terminal_rpc_allowlist;
 
+/**
+ * Set by the core when a loud warning is due, consumed and cleared by the GUI,
+ * which turns it into one non-blocking desktop notification.
+ *
+ * The core deliberately does not raise the notification itself. The obvious way
+ * to do that -- uiInterface.ThreadSafeMessageBox without MODAL -- reaches the
+ * GUI's notificator, but in a daemon the same call lands in noui, which writes
+ * unconditionally to stderr. A long-running daemon should say this in
+ * debug.log, not on stderr, so the two frontends are fed separately: LogPrintf
+ * for the daemon, this flag for the GUI.
+ */
+extern std::atomic_bool g_terminal_notify_pending;
+
 /** The single frozen operator-facing message. Used verbatim by the chain-advance
  *  halt, the startup refusal, the RPC gate and the mining refusal, so that every
  *  route out of this build says exactly the same thing. */
 bilingual_str TerminalHaltMessage(int terminal_height);
 
-/** The persistent warning shown for nTerminalWarningLead blocks before the halt. */
-bilingual_str TerminalWarningMessage(int terminal_height, int blocks_remaining);
+/** The persistent warning shown for nTerminalWarningLead blocks before the halt.
+ *  Carries an estimated calendar date as well as the block count: operators plan
+ *  in dates, and "43200 blocks away" means nothing without doing the arithmetic. */
+bilingual_str TerminalWarningMessage(int terminal_height, int blocks_remaining, int64_t seconds_per_block);
+
+/**
+ * How loudly to warn at a given distance from the terminal height.
+ *
+ * A fixed cadence over a 30-day window is the recipe for alarm fatigue -- by the
+ * second week an unchanging message is wallpaper. The interval instead tightens
+ * as the deadline approaches, so the warning is quiet while there is plenty of
+ * time and insistent when there is not.
+ */
+enum class TerminalWarningTier {
+    NONE,     //!< outside the warning window
+    DISTANT,  //!< more than 7 days out
+    NEAR,     //!< inside 7 days
+    IMMINENT, //!< inside 24 hours
+};
+
+/** The tier that applies `blocks_remaining` before the halt. */
+TerminalWarningTier TerminalTierFor(int blocks_remaining, int64_t seconds_per_block);
+
+/** Whether a loud warning (log line, stderr, GUI notification) is due at this
+ *  height. Quiet blocks still carry the warning on the per-block UpdateTip line
+ *  and in the `warnings` RPC field, which cost nothing extra. */
+bool TerminalLoudWarningDue(int height, int blocks_remaining, int64_t seconds_per_block);
+
+/** Human-readable tier name, for logs. */
+const char* TerminalTierName(TerminalWarningTier tier);
 
 #endif // BITCOIN_NODE_TERMINAL_H

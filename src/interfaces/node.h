@@ -63,6 +63,10 @@ public:
     //! Get warnings.
     virtual bilingual_str getWarnings() = 0;
 
+    //! Whether a terminal-height warning notification is due. Consumes the
+    //! flag, so each loud warning produces exactly one notification.
+    virtual bool terminalNotifyPending() = 0;
+
     // Get log flags.
     virtual uint32_t getLogCategories() = 0;
 
