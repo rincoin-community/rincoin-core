@@ -1,6 +1,13 @@
 Translation Strings Policy
 ===========================
 
+> **TODO — Rincoin.** This document describes the upstream Bitcoin/Litecoin
+> translation process and has not been adapted. `.tx/config` still points at
+> the Bitcoin Transifex resource (`bitcoin.qt-translation-021x`) and at
+> `src/qt/locale/bitcoin_<lang>.ts`. Decide whether Rincoin runs its own
+> Transifex project — repoint the config and rewrite this document if so,
+> remove both if not.
+
 This document provides guidelines for internationalization of the Bitcoin Core software.
 
 How to translate?
