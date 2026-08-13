@@ -319,6 +319,11 @@ build_linux_binaries() {
     local image_name="rincoin-builder:linux-${arch_label}-${ubuntu_label}"
 
     if ! docker image inspect "$image_name" >/dev/null 2>&1; then
+        # git is required at build time, not just for fetching source:
+        # share/genbuild.sh shells out to it to stamp the release tag into
+        # src/obj/build.h. Without git in the image it emits "No build
+        # information available" and the binary reports its version as
+        # "v1.1.0.0-unk" instead of "v1.1.0". The Windows image already had it.
         cat > "$dockerfile" << DOCKERFILE_END
 FROM ubuntu:${ubuntu_version}
 ENV DEBIAN_FRONTEND=noninteractive
@@ -328,7 +333,7 @@ RUN apt-get update && apt-get install -y \
     libssl-dev libevent-dev libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
     libfmt-dev libminiupnpc-dev libzmq3-dev libsqlite3-dev \
     libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev qttools5-dev-tools libqrencode-dev \
-    curl wget ca-certificates ${extra_packages} \
+    curl wget ca-certificates git ${extra_packages} \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 DOCKERFILE_END
