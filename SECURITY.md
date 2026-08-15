@@ -25,7 +25,7 @@ These are the keys used to sign releases and to receive encrypted reports. **Ver
 |------|------|-------------|
 | [@ysmreg](https://github.com/ysmreg) | Creator of Rincoin, Core Developer | (to be added) |
 | [@takologi](https://github.com/takologi) | Maintainer — release signing | `FEE1 ACA5 2C65 FF3E BF31 818C B559 5E17 52BC 2A82` |
-| [@mrr-hatt](https://github.com/mrr-hatt) | Core Developer | (to be added) |
+| [@mrr-hatt](https://github.com/mrr-hatt) | Core Developer | `1B48 3BCE C69B A6B2 9932 95C6 0DCE CAE3 4B0E 13D3` |
 
 The role names are the ones defined in [GOVERNANCE.md](GOVERNANCE.md#roles). They describe responsibilities within this repository. They do not confer authority over the Rincoin network, which is determined by the participants who choose what software to run — see [GOVERNANCE.md § Consensus changes](GOVERNANCE.md#consensus-changes).
 
