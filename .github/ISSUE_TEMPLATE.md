@@ -1,13 +1,10 @@
-<!-- This issue tracker is only for technical issues related to Rincoin Core.
+<!-- This issue tracker is only for technical issues related to Rincoin Community Core.
 
-General litecoin questions and/or support requests and are best directed to the [litecointalk.io forums](https://litecointalk.io/).
+General questions and support requests are best directed to [Discord](https://discord.gg/XFDkSqeUPQ) or info@rincoin.tech.
 
-For reporting security issues, please contact the Rincoin developers on the #litecoin-dev Freenode IRC channel or alternatively you can email us at info@rincoin.tech.
+For reporting security issues, please see [SECURITY.md](../SECURITY.md) instead of opening a public issue.
 
 If the node is "stuck" during sync or giving "block checksum mismatch" errors, please ensure your hardware is stable by running memtest and observe CPU temperature with a load-test tool such as linpack before creating an issue!
-
-Any report, issue or feature request related to the GUI should be reported at
-https://github.com/bitcoin-core/gui/issues/
 -->
 
 <!-- Describe the issue -->
