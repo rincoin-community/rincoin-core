@@ -439,10 +439,13 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): flat
         // 70017 MWEB-capable baseline from genesis; no floor step in this release.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
-        // Terminal halt disabled by default: testnet's current height is not
-        // pinned here, and a stale compiled-in value would refuse to start.
-        // Rehearse with -terminalheight instead.
-        consensus.nTerminalHeight = 0;
+        // Terminal height: same lineage cutoff as mainnet, and numerically
+        // identical because testnet shares mainnet's halving interval (210,000)
+        // and spacing (60s) -- the 4th halving lands at the same height. This is
+        // a live, shared, growing chain like mainnet, so the same
+        // unaware-operator risk applies here. Overridable for rehearsal via
+        // -terminalheight (test chains only).
+        consensus.nTerminalHeight = 840000;
         consensus.nTerminalWarningLead = 43200;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -534,9 +537,16 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): flat
         // 70017 MWEB-capable baseline from genesis; no floor step in this release.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
-        // Terminal halt disabled by default so the existing functional suite is
-        // unaffected; tests opt in with -terminalheight.
-        consensus.nTerminalHeight = 0;
+        // Terminal height: 4th halving on regtest's own schedule (4 * 150 = 600),
+        // consistent with mainnet/testnet rather than a special-cased exemption.
+        // No existing Boost unit test builds a regtest chain anywhere near this
+        // height. The Python functional test harness
+        // (test_framework/test_node.py, see start()) disables this by default
+        // for every node it starts -- several existing functional tests mine
+        // well past 600 (e.g. regtest's own BIP65/66 activation heights below
+        // are 1351/1251) -- so a test only sees the halt if it opts in with its
+        // own -terminalheight (test chains only).
+        consensus.nTerminalHeight = 600;
         consensus.nTerminalWarningLead = 10;
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
         consensus.nPowTargetSpacing = 60; // match mainnet spacing (regtest convention)
@@ -709,8 +719,13 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): flat
         // 70017 MWEB-capable baseline from genesis; no floor step in this release.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
-        // Terminal halt disabled by default; set -terminalheight to rehearse.
-        consensus.nTerminalHeight = 0;
+        // Terminal height: 4th halving on this network's own fast schedule
+        // (4 * 150 = 600). No preview chain has been launched publicly yet
+        // (this network is expected to be overwritten/rolled back as needed
+        // while it's used to rehearse new functionality), so there is no live
+        // deployment to disrupt by enabling this now. Overridable for
+        // rehearsal via -terminalheight (test chains only).
+        consensus.nTerminalHeight = 600;
         consensus.nTerminalWarningLead = 100;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;

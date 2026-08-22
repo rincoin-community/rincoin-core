@@ -18,6 +18,31 @@ corresponds to the Litecoin `v0.21.4` base.
 
 ---
 
+## v1.1.1 — terminal halt: close the non-mainnet enforcement gap
+
+`v1.1.0` shipped the terminal halt (`nTerminalHeight`) enabled only on
+mainnet; testnet, regtest, and preview all carried it disabled (`0`). This
+release enables it on every network, at each network's own 4th subsidy
+halving, matching what this line has always been documented to do:
+
+| Network  | `nTerminalHeight` |
+| -------- | ------------------ |
+| mainnet  | `840,000` (unchanged) |
+| testnet  | `840,000` (same halving interval and spacing as mainnet) |
+| regtest  | `600` (4 * 150) |
+| preview  | `600` (4 * 150; no chain has been launched on this network yet) |
+
+**No consensus rule, protocol version, or mainnet behavior changes.** Mainnet
+already enforced the halt correctly in `v1.1.0`; this release only closes the
+gap on the other three networks. The Python functional test harness now
+disables the halt by default (`-terminalheight=0`) for every node it starts,
+since several existing regtest-based tests mine well past height 600 (e.g.
+regtest's own BIP65/66 activation heights, 1351/1251) and don't exercise this
+mechanism; a test only sees the halt if it opts in with its own
+`-terminalheight`. See [`doc/rincoin-parameters.md`](rincoin-parameters.md) §6.
+
+---
+
 ## v1.1.0 — terminal release for the 1.0/1.1 lineage
 
 > ## ⚠ This is a terminal release: it stops at block height 840,000

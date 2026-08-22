@@ -28,23 +28,48 @@ BOOST_AUTO_TEST_CASE(terminal_mainnet_parameters)
     BOOST_CHECK_EQUAL(consensus.nTerminalWarningLead, MAINNET_WARNING_LEAD);
 }
 
-BOOST_AUTO_TEST_CASE(terminal_disabled_on_test_chains_by_default)
+BOOST_AUTO_TEST_CASE(terminal_enabled_on_every_network_at_its_own_4th_halving)
 {
-    // Every test chain ships with the halt off, so the existing functional
-    // suite is unaffected and a test must opt in with -terminalheight.
-    for (const std::string& net : {CBaseChainParams::TESTNET, CBaseChainParams::REGTEST,
-                                   CBaseChainParams::PREVIEW}) {
+    // Every network stops at its own 4th subsidy halving, not just mainnet.
+    // Testnet shares mainnet's halving interval and spacing, so it lands on
+    // the same height; regtest and preview use their own fast interval (150).
+    // The Python functional test harness (test_framework/test_node.py)
+    // disables this by default for every node it starts, so the existing
+    // regtest-based functional suite -- which routinely mines well past 600,
+    // e.g. regtest's own BIP65/66 activation heights -- is unaffected unless a
+    // test opts in with its own -terminalheight.
+    const std::pair<std::string, int> expected[] = {
+        {CBaseChainParams::TESTNET, MAINNET_TERMINAL_HEIGHT},
+        {CBaseChainParams::REGTEST, 600},
+        {CBaseChainParams::PREVIEW, 600},
+    };
+    for (const auto& entry : expected) {
+        const std::string& net = entry.first;
+        const int height = entry.second;
         SelectParams(net);
         const auto& consensus = Params().GetConsensus();
-        BOOST_CHECK(!consensus.TerminalEnabled());
-        BOOST_CHECK_EQUAL(consensus.nTerminalHeight, 0);
-        // A disabled halt must never claim a height is terminal, and must never
-        // warn -- including at and around height 0, where a naive
-        // "height >= nTerminalHeight - lead" test would fire for every block.
-        for (const int height : {0, 1, 1000, MAINNET_TERMINAL_HEIGHT, MAINNET_TERMINAL_HEIGHT + 1}) {
-            BOOST_CHECK(!consensus.TerminalReached(height));
-            BOOST_CHECK(!consensus.TerminalWarning(height));
-        }
+        BOOST_CHECK(consensus.TerminalEnabled());
+        BOOST_CHECK_EQUAL(consensus.nTerminalHeight, height);
+        BOOST_CHECK(!consensus.TerminalReached(height - 1));
+        BOOST_CHECK(consensus.TerminalReached(height));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(terminal_override_can_still_disable_test_chains)
+{
+    // A test chain's non-zero default must remain overridable back to 0, since
+    // some functional tests (and the harness default) rely on that to
+    // represent a build with the halt genuinely absent.
+    SelectParams(CBaseChainParams::REGTEST);
+    CChainParams& regtest = const_cast<CChainParams&>(Params());
+
+    ArgsManager off;
+    off.ForceSetArg("-terminalheight", "0");
+    BOOST_CHECK_NO_THROW(regtest.UpdateTerminalParametersFromArgs(off));
+    BOOST_CHECK(!Params().GetConsensus().TerminalEnabled());
+    for (const int height : {0, 1, 1000, MAINNET_TERMINAL_HEIGHT}) {
+        BOOST_CHECK(!Params().GetConsensus().TerminalReached(height));
+        BOOST_CHECK(!Params().GetConsensus().TerminalWarning(height));
     }
 }
 

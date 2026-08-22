@@ -184,6 +184,15 @@ class TestNode():
         if extra_args is None:
             extra_args = self.extra_args
 
+        # Every test chain now stops itself at its own 4th-halving terminal
+        # height by default (600 on regtest, see chainparams.cpp), matching the
+        # mainnet halt this build ships to enforce a lineage cutoff. Tests here
+        # don't care about that mechanism and routinely mine past 600 (e.g.
+        # regtest's own BIP65/66 activation heights), so disable it unless a
+        # test explicitly opted in with its own -terminalheight.
+        if not any(arg == '-terminalheight' or arg.startswith('-terminalheight=') for arg in extra_args):
+            extra_args = extra_args + ['-terminalheight=0']
+
         # Add a new stdout and stderr file each time bitcoind is started
         if stderr is None:
             stderr = tempfile.NamedTemporaryFile(dir=self.stderr_dir, delete=False)

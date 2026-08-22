@@ -158,17 +158,31 @@ either value. See `rinhash_peer_proto_floor_params` in
 
 **This release stops at a height.** It is a terminal build for the current
 lineage: it validates normally up to the last block below the terminal height
-and then shuts down rather than connect a block at it.
+and then shuts down rather than connect a block at it. Every network stops at
+its own 4th subsidy halving (`nSubsidyHalvingInterval * 4`), not just mainnet:
+testnet shares mainnet's halving interval and spacing so it lands on the same
+number, and regtest/preview use their own fast interval (150 → 600).
 
-| Network  | `nTerminalHeight` | `nTerminalWarningLead` |
-| -------- | ----------------- | ---------------------- |
-| mainnet  | `840,000`         | `43,200` (30 days at 60 s spacing) |
-| testnet  | `0` (disabled)    | `43,200` |
-| regtest  | `0` (disabled)    | `10` |
-| preview  | `0` (disabled)    | `100` |
+| Network  | `nTerminalHeight`        | `nTerminalWarningLead` |
+| -------- | ------------------------ | ---------------------- |
+| mainnet  | `840,000`                | `43,200` (30 days at 60 s spacing) |
+| testnet  | `840,000`                | `43,200` |
+| regtest  | `600` (4 * 150)          | `10` |
+| preview  | `600` (4 * 150)          | `100` |
 
-Derived values on mainnet: the last block this release will ever connect is
-`839,999`, and the persistent warning begins at `840,000 − 43,200 = 796,800`.
+Derived values on mainnet/testnet: the last block this release will ever
+connect is `839,999`, and the persistent warning begins at
+`840,000 − 43,200 = 796,800`.
+
+`-terminalheight`/`-terminalwarninglead` remain test-chain-only overrides (see
+`UpdateTerminalParametersFromArgs`); mainnet's value is compiled in and refuses
+any override. The Python functional test harness
+([`test_framework/test_node.py`](../test/functional/test_framework/test_node.py),
+`TestNode.start()`) disables the halt by default (`-terminalheight=0`) for
+every node it starts unless a test explicitly sets its own `-terminalheight`,
+since regtest's non-zero default would otherwise abort the many existing
+functional tests that mine well past height 600 (e.g. regtest's own BIP65/66
+activation heights, 1351/1251).
 
 How the warning is delivered, once inside that window:
 
