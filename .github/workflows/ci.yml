@@ -9,6 +9,11 @@ on:
       - 'consensus/**'
   pull_request:
   workflow_dispatch:
+    inputs:
+      aevust_branch:
+        description: 'Aevust/rincoin branch to build for the new+foreign fork scenario (Scenario 4)'
+        required: false
+        default: 'feature/port-sim-v1.0.7'
 
 permissions:
   contents: read
@@ -63,5 +68,74 @@ jobs:
         with:
           name: test-results-${{ matrix.name }}
           path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30
+
+  # Fork scenario tests (test/functional/feature_fork_*.py): builds the
+  # current tree plus labeled reference binaries (old Rincoin releases, and
+  # the foreign Aevust/rincoin implementation) and runs the four fork
+  # interop scenarios against them. Kept separate from the fast `test`
+  # matrix above -- building several extra binaries is expensive and only
+  # meaningful once a consensus/<codename> branch actually implements a
+  # fork-candidate ruleset, so this only runs on consensus/** pushes and
+  # manual dispatch, never on every dev/PR push.
+  fork-scenario-tests:
+    name: fork-scenario-tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    if: startsWith(github.ref, 'refs/heads/consensus/') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends --no-upgrade -y \
+            python3-zmq python3-pip libevent-dev bsdmainutils \
+            libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
+            libdb5.3++-dev libminiupnpc-dev libzmq3-dev libsqlite3-dev libssl-dev libfmt-dev
+          pip3 install --user blake3 argon2-cffi
+
+      - name: Build current tree
+        run: |
+          ./autogen.sh
+          ./configure --disable-dependency-tracking --without-gui --with-incompatible-bdb --with-boost-process
+          make -j"$(nproc)"
+
+      - name: Build reference binaries (old Rincoin releases)
+        run: |
+          test/build_reference_node.py \
+            --ref v1.1.0=v1.1.0 \
+            --ref v1.0.1=v1.0.1 \
+            --out-dir releases
+
+      - name: Build reference binary (Aevust/rincoin, foreign)
+        continue-on-error: true
+        run: |
+          test/build_reference_node.py \
+            --foreign "aevust=https://github.com/Aevust/rincoin.git#${{ github.event.inputs.aevust_branch || 'feature/port-sim-v1.0.7' }}" \
+            --out-dir releases
+
+      - name: Run fork scenario tests
+        env:
+          BITCOIND: ${{ github.workspace }}/src/rincoind
+          BITCOINCLI: ${{ github.workspace }}/src/rincoin-cli
+        run: |
+          test/functional/fork_report.py \
+            --out-json fork-test-report.json \
+            --out-md fork-test-report.md
+
+      - name: Upload fork scenario report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fork-scenario-results-${{ github.ref_name }}
+          path: |
+            fork-test-report.json
+            fork-test-report.md
           if-no-files-found: warn
           retention-days: 30

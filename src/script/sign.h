@@ -15,6 +15,8 @@
 #include <span.h>
 #include <streams.h>
 
+#include <array>
+
 class CKey;
 class CKeyID;
 class CScript;
@@ -40,10 +42,25 @@ class MutableTransactionSignatureCreator : public BaseSignatureCreator {
     unsigned int nIn;
     int nHashType;
     CAmount amount;
+    // consensus/s1-testing: carries sig_fork_id context (inactive by default,
+    // byte-identical to pre-fork behavior unless a caller that knows the
+    // confirming height uses the second constructor below). Declared before
+    // `checker` so it's constructed first: `checker` holds a pointer to this
+    // object (see the checker's own constructor call below), and member
+    // initialization runs in declaration order regardless of initializer-list
+    // order.
+    PrecomputedTransactionData m_txdata;
     const MutableTransactionSignatureChecker checker;
 
 public:
     MutableTransactionSignatureCreator(const CMutableTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn = SIGHASH_ALL);
+    /** consensus/s1-testing: signatures created this way use the post-fork
+     *  sighash (sig_fork_id mixed in) when sig_fork_id_active is true --
+     *  callers should pass true when the transaction is expected to confirm
+     *  at or after Consensus::Params::ForkH1Height. */
+    MutableTransactionSignatureCreator(const CMutableTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn,
+                                        const std::array<unsigned char, 8>& sig_fork_id, bool sig_fork_id_active,
+                                        int nHashTypeIn = SIGHASH_ALL);
     const BaseSignatureChecker& Checker() const override { return checker; }
     bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const override;
 };
@@ -171,7 +188,14 @@ bool IsSolvable(const SigningProvider& provider, const DestinationAddr& dest_add
 /** Check whether a scriptPubKey is known to be segwit. */
 bool IsSegWitOutput(const SigningProvider& provider, const CScript& script);
 
-/** Sign the CMutableTransaction */
-bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* provider, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors);
+/** Sign the CMutableTransaction.
+ *
+ * consensus/s1-testing: sig_fork_id/sig_fork_id_active are optional --
+ * omitted (nullptr/false), every input is signed exactly as before this
+ * branch. Pass them when the caller knows this transaction is expected to
+ * confirm at or after Consensus::Params::ForkH1Height, so the signatures
+ * produced are valid under the post-fork sighash rule. */
+bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* provider, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                      const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false);
 
 #endif // BITCOIN_SCRIPT_SIGN_H

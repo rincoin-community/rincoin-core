@@ -5,6 +5,7 @@
 #ifndef BITCOIN_RPC_RAWTRANSACTION_UTIL_H
 #define BITCOIN_RPC_RAWTRANSACTION_UTIL_H
 
+#include <array>
 #include <map>
 #include <string>
 
@@ -24,7 +25,11 @@ class SigningProvider;
  * @param  hashType      The signature hash type
  * @param result         JSON object where signed transaction results accumulate
  */
-void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result);
+// consensus/s1-testing: sig_fork_id/sig_fork_id_active optional, see
+// script/sign.h::SignTransaction() -- omitted, signs exactly as before this
+// branch.
+void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result,
+                      const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false);
 void SignTransactionResultToJSON(CMutableTransaction& mtx, bool complete, const std::map<COutPoint, Coin>& coins, std::map<int, std::string>& input_errors, UniValue& result);
 
 /**

@@ -10,6 +10,7 @@
 #include <chainparams.h>
 #include <coins.h>
 #include <consensus/consensus.h>
+#include <consensus/fork_commitment.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_verify.h>
 #include <consensus/validation.h>
@@ -178,6 +179,10 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
+    if (nHeight >= chainparams.GetConsensus().ForkH1Height) {
+        CScript forkScript = ForkCommitment::BuildForkCommitmentScript(chainparams.GetConsensus());
+        pblocktemplate->vchForkCommitment.assign(forkScript.begin(), forkScript.end());
+    }
     pblocktemplate->vTxFees[0] = -nFees;
 
     LogPrintf("CreateNewBlock(): block weight: %u txs: %u fees: %ld sigops: %d MWEB weight: %u\n", GetBlockWeight(*pblock), nBlockTx, nFees, nBlockSigOpsCost, nBlockMWEBWeight);

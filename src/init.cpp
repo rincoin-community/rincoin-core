@@ -5,6 +5,8 @@
 
 #if defined(HAVE_CONFIG_H)
 #include <config/bitcoin-config.h>
+
+#include <cstdlib>
 #endif
 
 #include <init.h>
@@ -964,6 +966,41 @@ bool AppInitBasicSetup(ArgsManager& args)
     return true;
 }
 
+// consensus/s1-testing: this is a consensus-testing build (height-840,000
+// fork commitment + sig_fork_id rules compiled in, S1 scenario). Refuse to
+// run on mainnet unless the operator explicitly sets
+// RINCOIN_TESTING_ALLOW_MAINNET=1 in the *process environment* --
+// deliberately not a -flag or rincoin.conf setting, so this can't be set
+// once and forgotten in a config file.
+//
+// Deliberately NOT inside AppInitParameterInteraction(): that function is
+// also invoked directly by the unit test harness
+// (test/util/setup_common.cpp, BasicTestingSetup, which defaults to
+// mainnet) purely for its parameter-interaction side effects, with its
+// return value ignored -- putting the guard there would spam every unit
+// test's log with this error without actually gating anything. Callers:
+// bitcoind.cpp and qt/bitcoin.cpp, each immediately after SelectParams()
+// succeeds, before any datadir lock, chainstate, or network activity.
+bool CheckMainnetTestingGuard()
+{
+    const CChainParams& chainparams = Params();
+    if (chainparams.NetworkIDString() != CBaseChainParams::MAIN) {
+        return true;
+    }
+    const char* allow_mainnet = std::getenv("RINCOIN_TESTING_ALLOW_MAINNET");
+    const bool allowed = allow_mainnet != nullptr && std::string(allow_mainnet) == "1";
+    if (!allowed) {
+        return InitError(_(
+            "This is a consensus-testing build (height-840,000 fork rules, S1 scenario). "
+            "It refuses to run on mainnet unless RINCOIN_TESTING_ALLOW_MAINNET=1 is set in "
+            "the process environment. This is not a command-line flag or config file setting "
+            "by design. If you intended to run on testnet/regtest/preview, check your -chain/"
+            "-testnet/-regtest/-preview selection."
+        ));
+    }
+    return true;
+}
+
 bool AppInitParameterInteraction(const ArgsManager& args)
 {
     const CChainParams& chainparams = Params();
@@ -1431,6 +1468,12 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
 
     // sanitize comments per BIP-0014, format user agent and check total size
     std::vector<std::string> uacomments;
+    // consensus/s1-testing: self-identify in the P2P-visible subversion
+    // string without relying on the operator remembering -uacomment, so
+    // this build is recognizable in getpeerinfo/logs on sight. "rc1" here
+    // mirrors configure.ac's _CLIENT_VERSION_RC -- unlike RC, this actually
+    // reaches the running binary's visible version strings.
+    uacomments.push_back("s1-testing-rc1");
     for (const std::string& cmt : args.GetArgs("-uacomment")) {
         if (cmt != SanitizeString(cmt, SAFE_CHARS_UA_COMMENT))
             return InitError(strprintf(_("User Agent comment (%s) contains unsafe characters."), cmt));

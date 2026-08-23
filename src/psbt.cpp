@@ -224,7 +224,8 @@ void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransactio
     psbt_out.FromSignatureData(sigdata);
 }
 
-bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, int sighash, SignatureData* out_sigdata, bool use_dummy)
+bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, int sighash, SignatureData* out_sigdata, bool use_dummy,
+                    const std::array<unsigned char, 8>* sig_fork_id, bool sig_fork_id_active)
 {
     PSBTInput& input = psbt.inputs.at(index);
     const CMutableTransaction& tx = *psbt.tx;
@@ -266,6 +267,9 @@ bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& 
     bool sig_complete;
     if (use_dummy) {
         sig_complete = ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata);
+    } else if (sig_fork_id) {
+        MutableTransactionSignatureCreator creator(&tx, index, utxo.nValue, *sig_fork_id, sig_fork_id_active, sighash);
+        sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata);
     } else {
         MutableTransactionSignatureCreator creator(&tx, index, utxo.nValue, sighash);
         sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata);

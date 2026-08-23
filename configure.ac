@@ -1,10 +1,22 @@
 AC_PREREQ([2.69])
+dnl consensus/s1-testing: minor version bumped to 2 (was 1.1.x) so this
+dnl consensus-testing build (height-840,000 fork rules, S1 scenario) can
+dnl never collide with the legacy-1.1 lineage's own point releases (v1.1.0,
+dnl v1.1.1, and any future v1.1.x patch) -- 1.2.0 sits in a version-number
+dnl space that lineage will never use, per BRANCHES.md's framing of
+dnl dev/master as the next release line beyond legacy-1.1. RC=1 and
+dnl IS_RELEASE=false mark this as an explicit pre-release/testing build,
+dnl not a candidate for production use; see also the default -uacomment
+dnl ("s1-testing-rc1") set in src/init.cpp, which is what's actually
+dnl visible in the P2P subversion string and getpeerinfo/debug.log --
+dnl RC only reaches the build-system version (configure --version, tarball
+dnl names), it doesn't surface in the running binary's own version string.
 define(_CLIENT_VERSION_MAJOR, 1)
-define(_CLIENT_VERSION_MINOR, 1)
+define(_CLIENT_VERSION_MINOR, 2)
 define(_CLIENT_VERSION_REVISION, 0)
 define(_CLIENT_VERSION_BUILD, 0)
 define(_CLIENT_VERSION_RC, 1)
-define(_CLIENT_VERSION_IS_RELEASE, true)
+define(_CLIENT_VERSION_IS_RELEASE, false)
 define(_COPYRIGHT_YEAR, 2026)
 define(_COPYRIGHT_HOLDERS,[The %s developers])
 define(_COPYRIGHT_HOLDERS_SUBSTITUTION,[[Rincoin Community Core]])

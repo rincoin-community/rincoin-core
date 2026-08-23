@@ -32,6 +32,11 @@ struct CBlockTemplate
     std::vector<CAmount> vTxFees;
     std::vector<int64_t> vTxSigOpsCost;
     std::vector<unsigned char> vchCoinbaseCommitment;
+    /** consensus/s1-testing: height-840,000 fork branch commitment script
+     *  bytes (empty below Consensus::Params::ForkH1Height), for GBT to
+     *  expose as default_fork_commitment. Separate from, and additional to,
+     *  vchCoinbaseCommitment above. */
+    std::vector<unsigned char> vchForkCommitment;
 };
 
 // Container for tracking updates to ancestor feerate as we include (parent)

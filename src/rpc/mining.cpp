@@ -907,6 +907,18 @@ static RPCHelpMan getblocktemplate()
         result.pushKV("default_witness_commitment", HexStr(pblocktemplate->vchCoinbaseCommitment));
     }
 
+    // consensus/s1-testing: height-840,000 fork branch commitment. Exposed
+    // both as the ready-made script bytes (for direct use, mirroring
+    // default_witness_commitment above) and as its constituent fields, so a
+    // pool rebuilding its own coinbase doesn't need to hand-parse the
+    // OP_RETURN payload back apart.
+    if (!pblocktemplate->vchForkCommitment.empty()) {
+        result.pushKV("default_fork_commitment", HexStr(pblocktemplate->vchForkCommitment));
+        result.pushKV("fork_branch_id", HexStr(consensusParams.ForkBranchId));
+        result.pushKV("fork_no", (int64_t)consensusParams.ForkNo);
+        result.pushKV("fork_scenario_id", (int64_t)consensusParams.ForkScenarioId);
+    }
+
     const auto& mweb_block = pblocktemplate->block.mweb_block;
     if (!mweb_block.IsNull()) {
         result.pushKV("mweb", HexStr(mweb_block.m_block->Serialized()));

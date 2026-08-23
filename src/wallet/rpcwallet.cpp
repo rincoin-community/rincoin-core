@@ -4,6 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <amount.h>
+#include <chainparams.h>
 #include <core_io.h>
 #include <interfaces/chain.h>
 #include <key_io.h>
@@ -3558,7 +3559,12 @@ RPCHelpMan signrawtransactionwithwallet()
     // Script verification errors
     std::map<int, std::string> input_errors;
 
-    bool complete = pwallet->SignTransaction(mtx, coins, nHashType, input_errors);
+    // consensus/s1-testing: see CWallet::SignTransaction(CMutableTransaction&)
+    // in wallet.cpp for the same "confirming height = tip + 1" convention.
+    const Consensus::Params& fork_params = Params().GetConsensus();
+    const int nSpendHeight = pwallet->GetLastBlockHeight() + 1;
+    const bool sig_fork_id_active = nSpendHeight >= fork_params.ForkH1Height;
+    bool complete = pwallet->SignTransaction(mtx, coins, nHashType, input_errors, &fork_params.ForkSigId, sig_fork_id_active);
     UniValue result(UniValue::VOBJ);
     SignTransactionResultToJSON(mtx, complete, coins, input_errors, result);
     return result;

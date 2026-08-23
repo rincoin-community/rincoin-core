@@ -10,6 +10,7 @@
 #include <span.h>
 #include <primitives/transaction.h>
 
+#include <array>
 #include <vector>
 #include <stdint.h>
 
@@ -163,6 +164,22 @@ struct PrecomputedTransactionData
     std::vector<CTxOut> m_spent_outputs;
     //! Whether m_spent_outputs is initialized.
     bool m_spent_outputs_ready = false;
+
+    // consensus/s1-testing: height-840,000 sig_fork_id (sighash-level
+    // replay protection, consensus-transition.md §6). Deliberately NOT
+    // wired into Init()/the constructor below -- it is set explicitly, by
+    // whichever caller owns this object and knows the confirming height,
+    // via SetSigForkId(). Any caller that never calls it gets
+    // m_sig_fork_id_active == false and byte-identical SignatureHash()
+    // output to a build without this branch's changes at all.
+    std::array<unsigned char, 8> m_sig_fork_id{};
+    bool m_sig_fork_id_active = false;
+
+    void SetSigForkId(const std::array<unsigned char, 8>& sig_fork_id, bool active)
+    {
+        m_sig_fork_id = sig_fork_id;
+        m_sig_fork_id_active = active;
+    }
 
     PrecomputedTransactionData() = default;
 

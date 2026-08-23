@@ -29,6 +29,15 @@ void InitLogging(const ArgsManager& args);
 //!Parameter interaction: change current parameters depending on various rules
 void InitParameterInteraction(ArgsManager& args);
 
+/**
+ * consensus/s1-testing: refuse to proceed if chain-selected mainnet and
+ * RINCOIN_TESTING_ALLOW_MAINNET=1 isn't set in the process environment.
+ * Call immediately after SelectParams() succeeds, before any other
+ * initialization. Not part of AppInitParameterInteraction() -- see
+ * CheckMainnetTestingGuard()'s definition in init.cpp for why.
+ */
+bool CheckMainnetTestingGuard();
+
 /** Initialize bitcoin core: Basic context setup.
  *  @note This can be done before daemonization. Do not call Shutdown() if this function fails.
  *  @pre Parameters should be parsed and config file should be read.

@@ -7,6 +7,7 @@
 #include <coins.h>
 #include <consensus/validation.h>
 #include <core_io.h>
+#include <chainparams.h>
 #include <index/txindex.h>
 #include <key_io.h>
 #include <merkleblock.h>
@@ -807,7 +808,13 @@ static RPCHelpMan signrawtransactionwithkey()
     ParsePrevouts(request.params[2], &keystore, coins);
 
     UniValue result(UniValue::VOBJ);
-    SignTransaction(mtx, &keystore, coins, request.params[3], result);
+    // consensus/s1-testing: same "confirming height = tip + 1" convention
+    // as CWallet::SignTransaction() (wallet.cpp) and rpcwallet.cpp's
+    // signrawtransactionwithwallet.
+    const Consensus::Params& fork_params = Params().GetConsensus();
+    const int nSpendHeight = WITH_LOCK(cs_main, return ::ChainActive().Height()) + 1;
+    const bool sig_fork_id_active = nSpendHeight >= fork_params.ForkH1Height;
+    SignTransaction(mtx, &keystore, coins, request.params[3], result, &fork_params.ForkSigId, sig_fork_id_active);
     return result;
 },
     };

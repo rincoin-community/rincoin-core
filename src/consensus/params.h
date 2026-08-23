@@ -7,6 +7,7 @@
 #define BITCOIN_CONSENSUS_PARAMS_H
 
 #include <uint256.h>
+#include <array>
 #include <cstdint>
 #include <limits>
 #include <string>
@@ -105,6 +106,34 @@ struct Params {
     bool signet_blocks{false};
     std::vector<uint8_t> signet_challenge;
     int DGWHeight;
+
+    /**
+     * Height-840,000-style fork identity (rincoin-consensus840k/technology/
+     * consensus-transition.md). From ForkH1Height onward:
+     *  - every block's coinbase must carry exactly one zero-value RINF
+     *    commitment output identifying (ForkBranchId, ForkNo, ForkScenarioId)
+     *    (src/consensus/fork_commitment.h);
+     *  - every non-coinbase input's sighash preimage must include ForkSigId
+     *    (src/script/interpreter.cpp);
+     *  - GetBlockSubsidy() switches to the scenario-specific post-fork
+     *    formula (src/validation.cpp).
+     * A disabled/never-set schedule uses ForkH1Height ==
+     * std::numeric_limits<int>::max() (see e.g. mainnet before a scenario is
+     * selected, or networks that don't carry this fork at all).
+     */
+    int ForkH1Height{std::numeric_limits<int>::max()};
+    /** Opaque 128-bit lineage id, big-endian. Test-only placeholder values are
+     *  never valid for a real release -- see chainparams.cpp for the value
+     *  compiled into this build. */
+    std::array<unsigned char, 16> ForkBranchId{};
+    /** Increments per scheduled activation within a lineage (H1, H2, ...). */
+    uint32_t ForkNo{0};
+    /** Selects which candidate scenario (S1/S5b/S6b/...) this build enforces. */
+    uint16_t ForkScenarioId{0};
+    /** SHA256(ForkBranchId || ForkNo_BE(4) || ForkScenarioId_BE(2))[:8],
+     *  precomputed once per CChainParams construction (chainparams.cpp) --
+     *  never recomputed per-signature-hash. */
+    std::array<unsigned char, 8> ForkSigId{};
 
     /**
      * Peer-protocol-version floor schedule: a height-sorted list of

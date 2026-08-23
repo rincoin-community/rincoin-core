@@ -10,6 +10,7 @@
 #include <crypto/sha256.h>
 #include <pubkey.h>
 #include <script/script.h>
+#include <serialize.h>
 #include <uint256.h>
 
 typedef std::vector<unsigned char> valtype;
@@ -1620,6 +1621,14 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         ss << txTo.nLockTime;
         // Sighash type
         ss << nHashType;
+        // consensus/s1-testing: height-840,000 sig_fork_id, appended as the
+        // last preimage field, only when active (height >= ForkH1Height for
+        // the confirming block -- see PrecomputedTransactionData::
+        // SetSigForkId() callers in validation.cpp). Written as raw bytes,
+        // not through any integer-width/endianness reinterpretation.
+        if (cache && cache->m_sig_fork_id_active) {
+            ss.write(CharCast(cache->m_sig_fork_id.data()), cache->m_sig_fork_id.size());
+        }
 
         return ss.GetHash();
     }
@@ -1638,6 +1647,12 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
     // Serialize and hash
     CHashWriter ss(SER_GETHASH, 0);
     ss << txTmp << nHashType;
+    // consensus/s1-testing: height-840,000 sig_fork_id, see the WITNESS_V0
+    // branch above for the full explanation -- this legacy/BASE branch
+    // previously never consulted `cache` at all.
+    if (cache && cache->m_sig_fork_id_active) {
+        ss.write(CharCast(cache->m_sig_fork_id.data()), cache->m_sig_fork_id.size());
+    }
     return ss.GetHash();
 }
 

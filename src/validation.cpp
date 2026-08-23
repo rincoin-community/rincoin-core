@@ -10,6 +10,7 @@
 #include <chainparams.h>
 #include <checkqueue.h>
 #include <consensus/consensus.h>
+#include <consensus/fork_commitment.h>
 #include <consensus/merkle.h>
 #include <consensus/tx_check.h>
 #include <consensus/tx_verify.h>
@@ -967,6 +968,25 @@ bool MemPoolAccept::PolicyScriptChecks(ATMPArgs& args, Workspace& ws, Precompute
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
     if (!CheckInputScripts(tx, state, m_view, scriptVerifyFlags, true, false, txdata)) {
+        // consensus/s1-testing: if sig_fork_id was active for this check and
+        // scripts verify fine against the pre-fork-shaped digest instead,
+        // this is old-style-signed pre-H1 replay residue, not a broken
+        // script. Reclassify as the non-punitive TX_RECENT_CONSENSUS_CHANGE
+        // (already defined, previously unused) instead of the punitive
+        // default from CheckInputScripts, so a wrongly-signed transaction
+        // can't stall block assembly while honest peers relaying such
+        // residue aren't penalized for it (consensus-transition.md §6).
+        if (txdata.m_sig_fork_id_active) {
+            PrecomputedTransactionData old_style_txdata = txdata;
+            old_style_txdata.SetSigForkId(txdata.m_sig_fork_id, false);
+            TxValidationState state_shadow;
+            if (CheckInputScripts(tx, state_shadow, m_view, scriptVerifyFlags, true, false, old_style_txdata)) {
+                state.Invalid(TxValidationResult::TX_RECENT_CONSENSUS_CHANGE,
+                        "old-style-sig-fork-id", "signature valid under pre-fork sighash rules only");
+                return false;
+            }
+        }
+
         // SCRIPT_VERIFY_CLEANSTACK requires SCRIPT_VERIFY_WITNESS, so we
         // need to turn both off, and compare against just turning off CLEANSTACK
         // to see if the failure is specifically due to witness validation.
@@ -1076,6 +1096,16 @@ bool MemPoolAccept::AcceptSingleTransaction(const CTransactionRef& ptx, ATMPArgs
     // checks first and avoid hashing and signature verification unless those
     // checks pass, to mitigate CPU exhaustion denial-of-service attacks.
     PrecomputedTransactionData txdata;
+
+    // consensus/s1-testing: height-840,000 sig_fork_id activation, keyed off
+    // the height this transaction would confirm at if accepted now -- the
+    // same "confirming height" semantics CheckTxInputs() already uses via
+    // GetSpendHeight() above in PreChecks().
+    {
+        const Consensus::Params& fork_params = args.m_chainparams.GetConsensus();
+        const int nSpendHeight = GetSpendHeight(m_view);
+        txdata.SetSigForkId(fork_params.ForkSigId, nSpendHeight >= fork_params.ForkH1Height);
+    }
 
     if (!PolicyScriptChecks(args, workspace, txdata)) return false;
 
@@ -1268,8 +1298,54 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex
     return ReadRawBlockFromDisk(block, block_pos, message_start);
 }
 
+/**
+ * S1 scenario post-fork subsidy (rincoin-consensus840k/technology/
+ * consensus-transition.md §3): from ForkH1Height onward, recursive
+ * integer-floor x19/20 per nSubsidyHalvingInterval-block epoch, no floor, no
+ * tail. The series starts from the *pre-fork* subsidy value at the halving
+ * epoch immediately below ForkH1Height -- i.e. what the ordinary halving
+ * schedule already produced just before the fork -- not one further halving,
+ * which is what a naive continuation of the pre-fork rule would give at
+ * ForkH1Height itself. Verified against the frozen S1 test vectors: height
+ * 839999 = 625000000 (pre-fork, unchanged), height 840000 = 593750000
+ * (593750000 == 625000000 * 19 / 20).
+ */
+static CAmount GetBlockSubsidyPostFork(int nHeight, const Consensus::Params& consensusParams)
+{
+    CAmount nBase = 50 * COIN;
+    int nPreForkHalvings = (consensusParams.ForkH1Height - 1) / consensusParams.nSubsidyHalvingInterval;
+    if (nPreForkHalvings < 64) {
+        nBase >>= nPreForkHalvings;
+    } else {
+        nBase = 0;
+    }
+
+    // int64_t: (nHeight - ForkH1Height) can't overflow int, but avoid any
+    // ambiguity for extreme/adversarial nHeight values (e.g. near INT_MAX).
+    const int64_t nEpoch = (int64_t(nHeight) - consensusParams.ForkH1Height) / consensusParams.nSubsidyHalvingInterval;
+
+    // Each epoch step multiplies by 19/20 (~5% reduction) with integer-floor
+    // rounding. While nSubsidy > 0, floor(19x/20) < x for every integer
+    // x >= 1 (19x < 20x, and an integer strictly less than x is at most
+    // x-1), so the value strictly decreases every step and the loop is
+    // bounded by nBase itself -- independent of nEpoch/nHeight. The
+    // `nSubsidy > 0` condition alone is what makes this safe for any
+    // height (a deep chain, a boundary/stress-test value, or an adversarial
+    // one): once it reaches zero the loop exits immediately instead of
+    // iterating nEpoch+1 times doing nothing (0*19/20 == 0 forever).
+    CAmount nSubsidy = nBase;
+    for (int64_t i = 0; i <= nEpoch && nSubsidy > 0; ++i) {
+        nSubsidy = (nSubsidy * 19) / 20;
+    }
+    return nSubsidy;
+}
+
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 {
+    if (nHeight >= consensusParams.ForkH1Height) {
+        return GetBlockSubsidyPostFork(nHeight, consensusParams);
+    }
+
     int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
     // Force block reward to zero when right shift is undefined.
     if (halvings >= 64)
@@ -1595,7 +1671,19 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState &state, const C
     // transaction).
     uint256 hashCacheEntry;
     CSHA256 hasher = g_scriptExecutionCacheHasher;
-    hasher.Write(tx.GetWitnessHash().begin(), 32).Write((unsigned char*)&flags, sizeof(flags)).Finalize(hashCacheEntry.begin());
+    hasher.Write(tx.GetWitnessHash().begin(), 32).Write((unsigned char*)&flags, sizeof(flags));
+    // consensus/s1-testing: sig_fork_id activation changes the sighash
+    // preimage without changing `flags` (it isn't a SCRIPT_VERIFY_* toggle,
+    // it's data mixed into the hash) -- so two calls with an identical
+    // (witness_hash, flags) pair can require different verification results
+    // depending on whether the confirming height is >= ForkH1Height. Fold
+    // the activation bit into the cache key or a script check cached valid
+    // pre-H1 could produce a stale hit post-H1 (a real risk under
+    // adversarial replay, or in test harnesses that reuse cache state
+    // across simulated height jumps -- which this project's own suite does
+    // on purpose).
+    const unsigned char fork_id_active_byte = txdata.m_sig_fork_id_active ? 1 : 0;
+    hasher.Write(&fork_id_active_byte, 1).Finalize(hashCacheEntry.begin());
     AssertLockHeld(cs_main); //TODO: Remove this requirement by making CuckooCache not require external locks
     if (g_scriptExecutionCache.contains(hashCacheEntry, !cacheFullScriptStore)) {
         return true;
@@ -2199,6 +2287,14 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     // for as long as `control`.
     CCheckQueueControl<CScriptCheck> control(fScriptChecks && g_parallel_script_checks ? &scriptcheckqueue : nullptr);
     std::vector<PrecomputedTransactionData> txsdata(block.vtx.size());
+
+    // consensus/s1-testing: height-840,000 sig_fork_id activation. Applies
+    // to every non-coinbase input's sighash (coinbase transactions are
+    // never signature-checked, so index 0 is left inactive for clarity).
+    const bool fSigForkIdActive = pindex->nHeight >= chainparams.GetConsensus().ForkH1Height;
+    for (unsigned int i = 1; i < block.vtx.size(); i++) {
+        txsdata[i].SetSigForkId(chainparams.GetConsensus().ForkSigId, fSigForkIdActive);
+    }
 
     std::vector<int> prevheights;
     CAmount nFees = 0;
@@ -3614,6 +3710,25 @@ std::vector<unsigned char> GenerateCoinbaseCommitment(CBlock& block, const CBloc
             block.vtx[0] = MakeTransactionRef(std::move(tx));
         }
     }
+
+    // consensus/s1-testing: height-840,000 fork branch commitment. A
+    // separate, additional output from the witness commitment above -- not
+    // a modification of it. Only appended if not already present (e.g. a
+    // caller that pre-built the coinbase, such as a pool rebuilding it from
+    // a GBT template, may have already added the exact same output).
+    int nHeight = pindexPrev == nullptr ? 0 : pindexPrev->nHeight + 1;
+    if (nHeight >= consensusParams.ForkH1Height) {
+        const int count = ForkCommitment::FindForkCommitment(*block.vtx[0]).first;
+        if (count == 0) {
+            CTxOut out;
+            out.nValue = 0;
+            out.scriptPubKey = ForkCommitment::BuildForkCommitmentScript(consensusParams);
+            CMutableTransaction tx(*block.vtx[0]);
+            tx.vout.push_back(out);
+            block.vtx[0] = MakeTransactionRef(std::move(tx));
+        }
+    }
+
     UpdateUncommittedBlockStructures(block, pindexPrev, consensusParams);
     return commitment;
 }
@@ -3803,6 +3918,14 @@ static bool ContextualCheckBlock(const CBlock& block, BlockValidationState& stat
                 return state.Invalid(BlockValidationResult::BLOCK_MUTATED, "unexpected-witness", strprintf("%s : unexpected witness data found", __func__));
             }
         }
+    }
+
+    // consensus/s1-testing: height-840,000 fork branch commitment. Separate
+    // from, and additional to, the witness commitment above. See
+    // consensus/fork_commitment.h for the exact byte layout and validation
+    // rules; a no-op below Consensus::Params::ForkH1Height.
+    if (!ForkCommitment::ValidateForkCommitment(block, consensusParams, nHeight, state)) {
+        return false;
     }
 
     // After the coinbase witness reserved value and commitment are verified,

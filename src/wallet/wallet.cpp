@@ -6,6 +6,7 @@
 #include <wallet/wallet.h>
 
 #include <chain.h>
+#include <chainparams.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <fs.h>
@@ -3010,16 +3011,31 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
         coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], wtx.m_confirm.block_height, wtx.IsCoinBase(), wtx.IsHogEx());
     }
     std::map<int, std::string> input_errors;
-    return SignTransaction(tx, coins, SIGHASH_ALL, input_errors);
+
+    // consensus/s1-testing: sign using the post-fork sighash if this
+    // transaction is expected to confirm at or after ForkH1Height (the same
+    // "confirming height = current tip + 1" convention used by
+    // GetSpendHeight()/AcceptSingleTransaction() in validation.cpp). Read
+    // m_last_block_processed_height directly rather than via
+    // GetLastBlockHeight(), which asserts if the wallet hasn't processed a
+    // block yet (e.g. not yet synced) -- that's a real, if narrow, state for
+    // a wallet to be in and must not crash the process; fall back to "spend
+    // height 0" (forkid inactive) in that case, matching this branch's
+    // general "unknown context defaults to pre-fork behavior" convention.
+    const Consensus::Params& fork_params = Params().GetConsensus();
+    const int nSpendHeight = (m_last_block_processed_height >= 0 ? m_last_block_processed_height : -1) + 1;
+    const bool sig_fork_id_active = nSpendHeight >= fork_params.ForkH1Height;
+    return SignTransaction(tx, coins, SIGHASH_ALL, input_errors, &fork_params.ForkSigId, sig_fork_id_active);
 }
 
-bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const
+bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                               const std::array<unsigned char, 8>* sig_fork_id, bool sig_fork_id_active) const
 {
     // Try to sign with all ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         // spk_man->SignTransaction will return true if the transaction is complete,
         // so we can exit early and return true if that happens
-        if (spk_man->SignTransaction(tx, coins, sighash, input_errors)) {
+        if (spk_man->SignTransaction(tx, coins, sighash, input_errors, sig_fork_id, sig_fork_id_active)) {
             return true;
         }
     }
@@ -3056,10 +3072,17 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
         }
     }
 
+    // consensus/s1-testing: same "confirming height = tip + 1" convention as
+    // CWallet::SignTransaction() above, including the same non-asserting
+    // read of m_last_block_processed_height.
+    const Consensus::Params& fork_params = Params().GetConsensus();
+    const int nSpendHeight = (m_last_block_processed_height >= 0 ? m_last_block_processed_height : -1) + 1;
+    const bool sig_fork_id_active = nSpendHeight >= fork_params.ForkH1Height;
+
     // Fill in information from ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         int n_signed_this_spkm = 0;
-        TransactionError res = spk_man->FillPSBT(psbtx, sighash_type, sign, bip32derivs, &n_signed_this_spkm);
+        TransactionError res = spk_man->FillPSBT(psbtx, sighash_type, sign, bip32derivs, &n_signed_this_spkm, &fork_params.ForkSigId, sig_fork_id_active);
         if (res != TransactionError::OK) {
             return res;
         }

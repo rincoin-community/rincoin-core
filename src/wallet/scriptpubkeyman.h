@@ -7,6 +7,7 @@
 
 #include <mw/wallet/Keychain.h>
 #include <psbt.h>
+#include <array>
 #include <script/descriptor.h>
 #include <script/signingprovider.h>
 #include <script/standard.h>
@@ -247,12 +248,16 @@ public:
       */
     virtual bool CanProvide(const DestinationAddr& dest_addr, SignatureData& sigdata) { return false; }
 
-    /** Creates new signatures and adds them to the transaction. Returns whether all inputs were signed */
-    virtual bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const { return false; }
+    /** Creates new signatures and adds them to the transaction. Returns whether all inputs were signed.
+     *  consensus/s1-testing: sig_fork_id/sig_fork_id_active optional, see script/sign.h::SignTransaction(). */
+    virtual bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                                  const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false) const { return false; }
     /** Sign a message with the given script */
     virtual SigningResult SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const { return SigningResult::SIGNING_FAILED; };
-    /** Adds script and derivation path information to a PSBT, and optionally signs it. */
-    virtual TransactionError FillPSBT(PartiallySignedTransaction& psbt, int sighash_type = 1 /* SIGHASH_ALL */, bool sign = true, bool bip32derivs = false, int* n_signed = nullptr) const { return TransactionError::INVALID_PSBT; }
+    /** Adds script and derivation path information to a PSBT, and optionally signs it.
+     *  consensus/s1-testing: sig_fork_id/sig_fork_id_active optional, see script/sign.h::SignTransaction(). */
+    virtual TransactionError FillPSBT(PartiallySignedTransaction& psbt, int sighash_type = 1 /* SIGHASH_ALL */, bool sign = true, bool bip32derivs = false, int* n_signed = nullptr,
+                                       const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false) const { return TransactionError::INVALID_PSBT; }
 
     virtual uint256 GetID() const { return uint256(); }
 
@@ -414,9 +419,11 @@ public:
 
     bool CanProvide(const DestinationAddr& dest_addr, SignatureData& sigdata) override;
 
-    bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const override;
+    bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                          const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false) const override;
     SigningResult SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const override;
-    TransactionError FillPSBT(PartiallySignedTransaction& psbt, int sighash_type = 1 /* SIGHASH_ALL */, bool sign = true, bool bip32derivs = false, int* n_signed = nullptr) const override;
+    TransactionError FillPSBT(PartiallySignedTransaction& psbt, int sighash_type = 1 /* SIGHASH_ALL */, bool sign = true, bool bip32derivs = false, int* n_signed = nullptr,
+                               const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false) const override;
 
     uint256 GetID() const override;
 
@@ -633,9 +640,11 @@ public:
 
     bool CanProvide(const DestinationAddr& dest_addr, SignatureData& sigdata) override;
 
-    bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const override;
+    bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                          const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false) const override;
     SigningResult SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const override;
-    TransactionError FillPSBT(PartiallySignedTransaction& psbt, int sighash_type = 1 /* SIGHASH_ALL */, bool sign = true, bool bip32derivs = false, int* n_signed = nullptr) const override;
+    TransactionError FillPSBT(PartiallySignedTransaction& psbt, int sighash_type = 1 /* SIGHASH_ALL */, bool sign = true, bool bip32derivs = false, int* n_signed = nullptr,
+                               const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false) const override;
 
     uint256 GetID() const override;
 

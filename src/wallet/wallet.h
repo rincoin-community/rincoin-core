@@ -7,6 +7,7 @@
 #define BITCOIN_WALLET_WALLET_H
 
 #include <amount.h>
+#include <array>
 #include <interfaces/chain.h>
 #include <interfaces/handler.h>
 #include <mweb/mweb_wallet.h>
@@ -1100,7 +1101,9 @@ public:
     // Fetch the inputs and sign with SIGHASH_ALL.
     bool SignTransaction(CMutableTransaction& tx) const EXCLUSIVE_LOCKS_REQUIRED(cs_wallet);
     // Sign the tx given the input coins and sighash.
-    bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const;
+    // consensus/s1-testing: sig_fork_id/sig_fork_id_active optional, see script/sign.h::SignTransaction().
+    bool SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                          const std::array<unsigned char, 8>* sig_fork_id = nullptr, bool sig_fork_id_active = false) const;
     SigningResult SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const;
 
     /**

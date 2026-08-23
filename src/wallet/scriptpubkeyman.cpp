@@ -635,9 +635,10 @@ bool LegacyScriptPubKeyMan::CanProvide(const DestinationAddr& dest_addr, Signatu
     }
 }
 
-bool LegacyScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const
+bool LegacyScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                                             const std::array<unsigned char, 8>* sig_fork_id, bool sig_fork_id_active) const
 {
-    return ::SignTransaction(tx, this, coins, sighash, input_errors);
+    return ::SignTransaction(tx, this, coins, sighash, input_errors, sig_fork_id, sig_fork_id_active);
 }
 
 SigningResult LegacyScriptPubKeyMan::SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const
@@ -653,7 +654,8 @@ SigningResult LegacyScriptPubKeyMan::SignMessage(const std::string& message, con
     return SigningResult::SIGNING_FAILED;
 }
 
-TransactionError LegacyScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, int sighash_type, bool sign, bool bip32derivs, int* n_signed) const
+TransactionError LegacyScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, int sighash_type, bool sign, bool bip32derivs, int* n_signed,
+                                                  const std::array<unsigned char, 8>* sig_fork_id, bool sig_fork_id_active) const
 {
     if (n_signed) {
         *n_signed = 0;
@@ -682,7 +684,7 @@ TransactionError LegacyScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psb
         }
         SignatureData sigdata;
         input.FillSignatureData(sigdata);
-        SignPSBTInput(HidingSigningProvider(this, !sign, !bip32derivs), psbtx, i, sighash_type);
+        SignPSBTInput(HidingSigningProvider(this, !sign, !bip32derivs), psbtx, i, sighash_type, nullptr, false, sig_fork_id, sig_fork_id_active);
 
         bool signed_one = PSBTInputSigned(input);
         if (n_signed && (signed_one || !sign)) {
@@ -2255,7 +2257,8 @@ bool DescriptorScriptPubKeyMan::CanProvide(const DestinationAddr& dest_addr, Sig
     return IsMine(dest_addr);
 }
 
-bool DescriptorScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const
+bool DescriptorScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                                                 const std::array<unsigned char, 8>* sig_fork_id, bool sig_fork_id_active) const
 {
     std::unique_ptr<FlatSigningProvider> keys = MakeUnique<FlatSigningProvider>();
     for (const auto& coin_pair : coins) {
@@ -2266,7 +2269,7 @@ bool DescriptorScriptPubKeyMan::SignTransaction(CMutableTransaction& tx, const s
         *keys = Merge(*keys, *coin_keys);
     }
 
-    return ::SignTransaction(tx, keys.get(), coins, sighash, input_errors);
+    return ::SignTransaction(tx, keys.get(), coins, sighash, input_errors, sig_fork_id, sig_fork_id_active);
 }
 
 SigningResult DescriptorScriptPubKeyMan::SignMessage(const std::string& message, const PKHash& pkhash, std::string& str_sig) const
@@ -2287,7 +2290,8 @@ SigningResult DescriptorScriptPubKeyMan::SignMessage(const std::string& message,
     return SigningResult::OK;
 }
 
-TransactionError DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, int sighash_type, bool sign, bool bip32derivs, int* n_signed) const
+TransactionError DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction& psbtx, int sighash_type, bool sign, bool bip32derivs, int* n_signed,
+                                                      const std::array<unsigned char, 8>* sig_fork_id, bool sig_fork_id_active) const
 {
     if (n_signed) {
         *n_signed = 0;
@@ -2337,7 +2341,7 @@ TransactionError DescriptorScriptPubKeyMan::FillPSBT(PartiallySignedTransaction&
             }
         }
 
-        SignPSBTInput(HidingSigningProvider(keys.get(), !sign, !bip32derivs), psbtx, i, sighash_type);
+        SignPSBTInput(HidingSigningProvider(keys.get(), !sign, !bip32derivs), psbtx, i, sighash_type, nullptr, false, sig_fork_id, sig_fork_id_active);
 
         bool signed_one = PSBTInputSigned(input);
         if (n_signed && (signed_one || !sign)) {

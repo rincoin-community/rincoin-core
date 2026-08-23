@@ -4,8 +4,11 @@
 
 #if defined(HAVE_CONFIG_H)
 #include <config/bitcoin-config.h>
+
+#include <cstdlib>
 #endif
 
+#include <chainparams.h>
 #include <clientversion.h>
 #include <coins.h>
 #include <consensus/consensus.h>
@@ -43,6 +46,12 @@ static void SetupBitcoinTxArgs(ArgsManager &argsman)
     argsman.AddArg("-create", "Create new, empty TX.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-json", "Select JSON output", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-txid", "Output only the hex-encoded transaction id of the resultant transaction.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-signheight=<n>", "consensus/s1-testing: assume the transaction being signed confirms at height <n> "
+                    "(affects whether sig_fork_id is mixed into the sighash, per Consensus::Params::ForkH1Height for the "
+                    "selected chain). This tool has no blockchain state of its own to infer a height from, so this must be "
+                    "given explicitly to produce a signature valid on a network that has already reached its fork height; "
+                    "omitted, signing behaves exactly as it did before this branch (no sig_fork_id).",
+                    ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     SetupChainParamsBaseOptions(argsman);
 
     argsman.AddArg("delin=N", "Delete input N from TX", ArgsManager::ALLOW_ANY, OptionsCategory::COMMANDS);
@@ -91,6 +100,20 @@ static int AppInitRawTx(int argc, char* argv[])
     } catch (const std::exception& e) {
         tfm::format(std::cerr, "Error: %s\n", e.what());
         return EXIT_FAILURE;
+    }
+
+    // consensus/s1-testing: this build can construct signed mainnet-looking
+    // transactions entirely offline (Open Risk R6) -- apply the same
+    // mainnet guard as rincoind/rincoin-qt (see CheckMainnetTestingGuard()
+    // in init.cpp) rather than leaving this tool uncovered.
+    if (Params().NetworkIDString() == CBaseChainParams::MAIN) {
+        const char* allow_mainnet = std::getenv("RINCOIN_TESTING_ALLOW_MAINNET");
+        if (allow_mainnet == nullptr || std::string(allow_mainnet) != "1") {
+            tfm::format(std::cerr, "Error: This is a consensus-testing build (height-840,000 fork rules, S1 scenario). "
+                        "It refuses to construct mainnet transactions unless RINCOIN_TESTING_ALLOW_MAINNET=1 is set in "
+                        "the process environment.\n");
+            return EXIT_FAILURE;
+        }
     }
 
     fCreateBlank = gArgs.GetBoolArg("-create", false);
@@ -634,6 +657,19 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 
     bool fHashSingle = ((nHashType & ~SIGHASH_ANYONECANPAY) == SIGHASH_SINGLE);
 
+    // consensus/s1-testing: this tool has no blockchain state of its own,
+    // so unlike the wallet/RPC signing paths there is no "current tip
+    // height" to infer sig_fork_id activation from -- it must be given
+    // explicitly via -signheight=, compared against the selected network's
+    // static Consensus::Params::ForkH1Height. Omitted, this is
+    // byte-identical to signing before this branch existed.
+    bool sig_fork_id_active = false;
+    if (gArgs.IsArgSet("-signheight")) {
+        int64_t signHeight = gArgs.GetArg("-signheight", 0);
+        sig_fork_id_active = signHeight >= Params().GetConsensus().ForkH1Height;
+    }
+    const std::array<unsigned char, 8>& sig_fork_id = Params().GetConsensus().ForkSigId;
+
     // Sign what we can:
     for (unsigned int i = 0; i < mergedTx.vin.size(); i++) {
         CTxIn& txin = mergedTx.vin[i];
@@ -646,8 +682,14 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 
         SignatureData sigdata = DataFromTransaction(mergedTx, i, coin.out);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
-        if (!fHashSingle || (i < mergedTx.vout.size()))
-            ProduceSignature(keystore, MutableTransactionSignatureCreator(&mergedTx, i, amount, nHashType), prevPubKey, sigdata);
+        if (!fHashSingle || (i < mergedTx.vout.size())) {
+            if (sig_fork_id_active) {
+                MutableTransactionSignatureCreator creator(&mergedTx, i, amount, sig_fork_id, /*sig_fork_id_active=*/true, nHashType);
+                ProduceSignature(keystore, creator, prevPubKey, sigdata);
+            } else {
+                ProduceSignature(keystore, MutableTransactionSignatureCreator(&mergedTx, i, amount, nHashType), prevPubKey, sigdata);
+            }
+        }
 
         UpdateInput(txin, sigdata);
     }

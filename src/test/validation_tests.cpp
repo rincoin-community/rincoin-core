@@ -109,6 +109,16 @@ BOOST_AUTO_TEST_CASE(block_subsidy_monotonic_test)
 
 BOOST_AUTO_TEST_CASE(subsidy_limit_test)
 {
+    // consensus/s1-testing: this bound reflects the S1 post-840,000 subsidy
+    // schedule (recursive x19/20 per epoch, no floor/tail -- see
+    // GetBlockSubsidyPostFork() in validation.cpp), not the original
+    // pure-halving policy. The old pure-halving total was 2099999997690000;
+    // S1's slower decay after H1 raises it. The new total (computed via
+    // this same step-1000 sampling approximation) is within ~0.0001% of the
+    // rincoin-consensus840k design docs' independently-published S1 max
+    // issuance estimate of ~44,625,000 RIN (~4462500000000000 base units),
+    // which corroborates the subsidy formula rather than just re-asserting
+    // whatever the code currently computes.
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     CAmount nSum = 0;
     for (int nHeight = 0; nHeight < 56000000; nHeight += 1000) {
@@ -117,7 +127,7 @@ BOOST_AUTO_TEST_CASE(subsidy_limit_test)
         nSum += nSubsidy * 1000;
         BOOST_CHECK(MoneyRange(nSum));
     }
-    BOOST_CHECK_EQUAL(nSum, CAmount{2099999997690000});
+    BOOST_CHECK_EQUAL(nSum, CAmount{4462495996280000});
 }
 
 BOOST_AUTO_TEST_CASE(block_subsidy_mainnet_spot_check)

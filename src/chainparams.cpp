@@ -7,6 +7,7 @@
 #include <chainparams.h>
 
 #include <chainparamsseeds.h>
+#include <consensus/fork_commitment.h>
 #include <consensus/merkle.h>
 #include <hash.h> // for signet block challenge hash
 #include <tinyformat.h>
@@ -87,6 +88,18 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
      return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
  }
 
+/** Parse a 32-hex-char string into a 16-byte ForkBranchId. Asserts on the
+ *  wrong length -- a malformed compiled-in constant is a build-time bug, not
+ *  a runtime condition to handle gracefully. */
+static std::array<unsigned char, 16> ParseForkBranchId(const std::string& hex)
+{
+    std::vector<unsigned char> bytes = ParseHex(hex);
+    assert(bytes.size() == 16);
+    std::array<unsigned char, 16> out{};
+    std::copy(bytes.begin(), bytes.end(), out.begin());
+    return out;
+}
+
 /**
  * Main network
  */
@@ -118,6 +131,16 @@ public:
         // already runs >= 70017); 70018 (RinHash-aware) is required from the
         // fourth-halving boundary onward.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {840000, 70018}};
+        // consensus/s1-testing: height-840,000 fork identity (S1 scenario).
+        // TEST-ONLY VALUES -- branch_id was freshly generated for this
+        // testing branch and must never be reused as a real mainnet value.
+        // This whole build additionally refuses to run on mainnet at all
+        // unless RINCOIN_TESTING_ALLOW_MAINNET=1 is set (src/init.cpp).
+        consensus.ForkH1Height = 840000;
+        consensus.ForkBranchId = ParseForkBranchId("6f2908c82838dab02cae3b9e527a600c");
+        consensus.ForkNo = 1;
+        consensus.ForkScenarioId = 1; // S1
+        consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -347,6 +370,13 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): 70017
         // MWEB-capable baseline from genesis, 70018 (RinHash) from height 4200.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {4200, 70018}};
+        // consensus/s1-testing: same test-only fork identity as mainnet (see
+        // CMainParams), just past the existing testnet proto-floor bump.
+        consensus.ForkH1Height = 4300;
+        consensus.ForkBranchId = ParseForkBranchId("6f2908c82838dab02cae3b9e527a600c");
+        consensus.ForkNo = 1;
+        consensus.ForkScenarioId = 1; // S1
+        consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -437,6 +467,31 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): 70017
         // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
+        // consensus/s1-testing: same test-only fork identity as mainnet (see
+        // CMainParams). Kept deliberately high by default: several existing
+        // C++ unit test fixtures (e.g. MinerTestingSetup in
+        // test/validation_block_tests.cpp) build a whole chain of blocks
+        // offline -- via GenerateCoinbaseCommitment(block, pindexPrev, ...)
+        // with a pindexPrev that isn't in the block index yet -- before
+        // connecting any of them. GenerateCoinbaseCommitment falls back to
+        // nHeight=0 whenever pindexPrev can't be looked up (a real,
+        // unavoidable limitation there's no good fallback for), so a low
+        // default here would make such tests silently produce
+        // commitment-less blocks for heights that turn out to be >= H1 once
+        // actually connected -- those blocks then fail ContextualCheckBlock
+        // for real, and at least one such test (mempool_locks_reorg) hangs
+        // forever polling for a reorg that can now never complete. No
+        // existing unit test's synthetic chain-building comes remotely
+        // close to this value. Functional tests (test/functional/
+        // feature_fork_*.py) that need a low, fast, MWEB-safe height
+        // instead pass -forkh1height= explicitly (see
+        // UpdateActivationParametersFromArgs below, matching the existing
+        // -segwitheight= convention) rather than relying on this default.
+        consensus.ForkH1Height = 500000;
+        consensus.ForkBranchId = ParseForkBranchId("6f2908c82838dab02cae3b9e527a600c");
+        consensus.ForkNo = 1;
+        consensus.ForkScenarioId = 1; // S1
+        consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
         consensus.nPowTargetSpacing = 60; // match mainnet spacing (regtest convention)
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -533,6 +588,17 @@ void CRegTestParams::UpdateActivationParametersFromArgs(const ArgsManager& args)
         consensus.SegwitHeight = static_cast<int>(height);
     }
 
+    if (args.IsArgSet("-forkh1height")) {
+        int64_t height = args.GetArg("-forkh1height", consensus.ForkH1Height);
+        if (height < -1 || height >= std::numeric_limits<int>::max()) {
+            throw std::runtime_error(strprintf("Activation height %ld for the fork commitment/sig_fork_id rules is out of valid range. Use -1 to disable.", height));
+        } else if (height == -1) {
+            LogPrintf("Height-840,000 fork rules disabled for testing\n");
+            height = std::numeric_limits<int>::max();
+        }
+        consensus.ForkH1Height = static_cast<int>(height);
+    }
+
     if (!args.IsArgSet("-vbparams")) return;
 
     for (const std::string& strDeployment : args.GetArgs("-vbparams")) {
@@ -608,6 +674,17 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): 70017
         // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
+        // consensus/s1-testing: same test-only fork identity as mainnet (see
+        // CMainParams). Preview is a publicly-reachable rehearsal chain, so
+        // this is the network where S1's fork behaviour gets exercised under
+        // real (if fast) PoW conditions before anything touches mainnet. Kept
+        // low (well below MWEB's activation height here) for the same reason
+        // as regtest -- see the comment on CRegTestParams::ForkH1Height.
+        consensus.ForkH1Height = 200;
+        consensus.ForkBranchId = ParseForkBranchId("6f2908c82838dab02cae3b9e527a600c");
+        consensus.ForkNo = 1;
+        consensus.ForkScenarioId = 1; // S1
+        consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
