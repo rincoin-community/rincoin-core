@@ -109,16 +109,24 @@ BOOST_AUTO_TEST_CASE(block_subsidy_monotonic_test)
 
 BOOST_AUTO_TEST_CASE(subsidy_limit_test)
 {
-    // consensus/s1-testing: this bound reflects the S1 post-840,000 subsidy
-    // schedule (recursive x19/20 per epoch, no floor/tail -- see
-    // GetBlockSubsidyPostFork() in validation.cpp), not the original
-    // pure-halving policy. The old pure-halving total was 2099999997690000;
-    // S1's slower decay after H1 raises it. The new total (computed via
-    // this same step-1000 sampling approximation) is within ~0.0001% of the
-    // rincoin-consensus840k design docs' independently-published S1 max
-    // issuance estimate of ~44,625,000 RIN (~4462500000000000 base units),
-    // which corroborates the subsidy formula rather than just re-asserting
-    // whatever the code currently computes.
+    // consensus/s6b-testing: this bound reflects the S6/b post-840,000
+    // subsidy schedule (four fixed-value phases plus a derived terminal
+    // cutoff -- see GetBlockSubsidyPostFork() in validation.cpp), not the
+    // original pure-halving policy. The old pure-halving total was
+    // 2099999997690000; S6/b's slower decay after H1 raises it.
+    //
+    // Unlike S1's/S5/b's frozen values here (a bounded partial sum, since
+    // their formulas don't reach zero within this loop's 56,000,000-block
+    // range), this value is an *exact* computation, not an approximation:
+    // S6/b's subsidy is piecewise constant, and 1000 divides evenly into
+    // every one of this scenario's phase-boundary heights (840000,
+    // 2100000, 4200000, 6300000), so the step-1000 sampling never crosses a
+    // boundary mid-step. The loop still stops at 56,000,000, well short of
+    // the scenario's true terminal height (234,587,500) -- this is a
+    // partial sum through most of the 0.6 RIN phase, not the scenario's
+    // true maximum lifetime issuance (168,000,000 RIN exactly, cross-checked
+    // independently in analysis/scripts/verify_s6b_independently.py against
+    // the specification's own normative vectors, not here).
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     CAmount nSum = 0;
     for (int nHeight = 0; nHeight < 56000000; nHeight += 1000) {
@@ -127,7 +135,7 @@ BOOST_AUTO_TEST_CASE(subsidy_limit_test)
         nSum += nSubsidy * 1000;
         BOOST_CHECK(MoneyRange(nSum));
     }
-    BOOST_CHECK_EQUAL(nSum, CAmount{4462495996280000});
+    BOOST_CHECK_EQUAL(nSum, CAmount{6084750000000000});
 }
 
 BOOST_AUTO_TEST_CASE(block_subsidy_mainnet_spot_check)

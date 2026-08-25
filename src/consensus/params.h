@@ -6,6 +6,7 @@
 #ifndef BITCOIN_CONSENSUS_PARAMS_H
 #define BITCOIN_CONSENSUS_PARAMS_H
 
+#include <amount.h>
 #include <uint256.h>
 #include <array>
 #include <cstdint>
@@ -134,6 +135,34 @@ struct Params {
      *  precomputed once per CChainParams construction (chainparams.cpp) --
      *  never recomputed per-signature-hash. */
     std::array<unsigned char, 8> ForkSigId{};
+
+    /**
+     * One entry in a post-fork subsidy phase table: from
+     * ForkH1Height + nOffsetFromH1 (inclusive) until the next entry's start
+     * (exclusive, or forever for the last entry), the block subsidy is
+     * exactly nSubsidy. Expressed as an offset from ForkH1Height, not an
+     * absolute height, so the same table works whether ForkH1Height is
+     * mainnet's real value or a much lower testing override (regtest's
+     * -forkh1height=), mirroring the same H1-relative-offset idea S1 and
+     * S5/b's own formulas already use. Used by scenarios whose schedule is
+     * a small number of fixed-value height ranges rather than a
+     * closed-form recursive/binary-halving formula (S6/b:
+     * rincoin-consensus840k/analysis/
+     * Rincoin_840k_S6B_Consensus_Change_Specification.qmd) -- a plain,
+     * ordered, variable-length table rather than hardcoded control flow, so
+     * a future revision with a different number of phases or different
+     * boundaries is a data change here, not a rewrite of
+     * GetBlockSubsidyPostFork()'s logic. A conforming table's first entry
+     * has nOffsetFromH1 == 0 and its final entry has nSubsidy == 0 (the
+     * terminal cutoff); entries must be sorted ascending by nOffsetFromH1.
+     */
+    struct ForkSubsidyPhase {
+        int nOffsetFromH1;
+        CAmount nSubsidy;
+    };
+    /** Empty for scenarios that don't use a phase table (e.g. S1, S5/b,
+     *  which compute the subsidy directly from a formula instead). */
+    std::vector<ForkSubsidyPhase> ForkSubsidyPhases;
 
     /**
      * Peer-protocol-version floor schedule: a height-sorted list of

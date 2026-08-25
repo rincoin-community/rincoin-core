@@ -7,7 +7,7 @@
 From FORK_H1_HEIGHT onward, exactly one zero-value coinbase output must carry
 a 30-byte `OP_RETURN <28-byte RINF payload>` script identifying this branch
 (rincoin-consensus840k/technology/consensus-transition.md §5). This test
-covers the acceptance/rejection matrix described in the S1 implementation
+covers the acceptance/rejection matrix described in the S6/b implementation
 plan: missing / duplicate / malformed / wrong-field commitments, placement
 independence, the "underclaiming is always valid" invariant, and GBT
 integration.

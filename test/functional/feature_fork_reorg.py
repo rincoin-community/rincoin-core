@@ -7,12 +7,12 @@ nodes, one overtaking work from the other).
 
 Two sub-tests:
 
-1. Two real S1 nodes, isolated, each mine a competing branch straddling H1,
+1. Two real S6/b nodes, isolated, each mine a competing branch straddling H1,
    then reconnect: the higher-work *valid* branch must win via ordinary
    reorg -- this exercises full-block (re-)validation of the commitment and
    subsidy rules along a reorg path, not just the initial-connect path.
 
-2. A single S1 node facing a synthetic, hand-built alternative branch (fed
+2. A single S6/b node facing a synthetic, hand-built alternative branch (fed
    via a raw P2P peer) that has *more* cumulative work than the node's own
    real chain but is invalid at the first post-H1 block (missing
    commitment): headers may be accepted (extending the node's header index),

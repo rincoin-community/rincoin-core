@@ -45,7 +45,7 @@ class ConfArgsTest(BitcoinTestFramework):
         with open(inc_conf_file_path, 'w', encoding='utf-8') as conf:
             conf.write('regtest=0\n') # mainnet
             conf.write('acceptnonstdtxn=1\n')
-        # consensus/s1-testing: this build refuses to start on mainnet at
+        # consensus/s6b-testing: this build refuses to start on mainnet at
         # all unless RINCOIN_TESTING_ALLOW_MAINNET=1 is set in the process
         # environment (see CheckMainnetTestingGuard() in init.cpp), and that
         # check runs before the acceptnonstdtxn-on-mainnet check this

@@ -67,9 +67,9 @@ def build_fork_test_block(node, *, omit_commitment=False, duplicate_commitment=F
     if height >= FORK_H1_HEIGHT:
         # create_coinbase()'s built-in subsidy formula is the plain
         # pre-fork regtest halving (height // 150) -- it has no notion of
-        # the S1 post-fork schedule, so it overclaims from H1 onward and
+        # this branch's post-fork schedule, so it overclaims from H1 onward and
         # every such block would fail on bad-cb-amount regardless of the
-        # commitment under test. Override with the correct S1 ceiling.
+        # commitment under test. Override with the correct post-fork ceiling.
         coinbase_tx.vout[0].nValue = expected_subsidy(
             height, h1_height=FORK_H1_HEIGHT, halving_interval=REGTEST_HALVING_INTERVAL, base_reward=50 * COIN)
         coinbase_tx.rehash()

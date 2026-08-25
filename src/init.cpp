@@ -966,8 +966,8 @@ bool AppInitBasicSetup(ArgsManager& args)
     return true;
 }
 
-// consensus/s1-testing: this is a consensus-testing build (height-840,000
-// fork commitment + sig_fork_id rules compiled in, S1 scenario). Refuse to
+// consensus/s6b-testing: this is a consensus-testing build (height-840,000
+// fork commitment + sig_fork_id rules compiled in, S6/b scenario). Refuse to
 // run on mainnet unless the operator explicitly sets
 // RINCOIN_TESTING_ALLOW_MAINNET=1 in the *process environment* --
 // deliberately not a -flag or rincoin.conf setting, so this can't be set
@@ -991,7 +991,7 @@ bool CheckMainnetTestingGuard()
     const bool allowed = allow_mainnet != nullptr && std::string(allow_mainnet) == "1";
     if (!allowed) {
         return InitError(_(
-            "This is a consensus-testing build (height-840,000 fork rules, S1 scenario). "
+            "This is a consensus-testing build (height-840,000 fork rules, S6/b scenario). "
             "It refuses to run on mainnet unless RINCOIN_TESTING_ALLOW_MAINNET=1 is set in "
             "the process environment. This is not a command-line flag or config file setting "
             "by design. If you intended to run on testnet/regtest/preview, check your -chain/"
@@ -1468,12 +1468,12 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
 
     // sanitize comments per BIP-0014, format user agent and check total size
     std::vector<std::string> uacomments;
-    // consensus/s1-testing: self-identify in the P2P-visible subversion
+    // consensus/s6b-testing: self-identify in the P2P-visible subversion
     // string without relying on the operator remembering -uacomment, so
     // this build is recognizable in getpeerinfo/logs on sight. "rc1" here
     // mirrors configure.ac's _CLIENT_VERSION_RC -- unlike RC, this actually
     // reaches the running binary's visible version strings.
-    uacomments.push_back("s1-testing-rc1");
+    uacomments.push_back("s6b-testing-rc1");
     for (const std::string& cmt : args.GetArgs("-uacomment")) {
         if (cmt != SanitizeString(cmt, SAFE_CHARS_UA_COMMENT))
             return InitError(strprintf(_("User Agent comment (%s) contains unsafe characters."), cmt));

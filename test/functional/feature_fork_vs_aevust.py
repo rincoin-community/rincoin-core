@@ -2,7 +2,7 @@
 # Copyright (c) 2026 The Rincoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test S1 interop against a foreign, unrelated Rincoin implementation
+"""Test S6/b interop against a foreign, unrelated Rincoin implementation
 (Scenario 4: new+foreign node).
 
 Aevust/rincoin (branch configurable, default feature/port-sim-v1.0.7) is a
@@ -50,12 +50,12 @@ def reference_available(label):
 
 class ForkVsAevustTest(BitcoinTestFramework):
     def set_test_params(self):
-        # node0: our S1 build. node1, node2: Aevust foreign build (node2
+        # node0: our S6/b build. node1, node2: Aevust foreign build (node2
         # only used in the IBD-hostile-majority sub-test). node3: a fresh
-        # S1 build used as the IBD client in that same sub-test.
+        # S6/b build used as the IBD client in that same sub-test.
         self.num_nodes = 4
         self.setup_clean_chain = True
-        # -forkh1height= only exists on the S1 build (node0, node3) -- the
+        # -forkh1height= only exists on the S6/b build (node0, node3) -- the
         # foreign Aevust binary (node1, node2) would fail to start on an
         # unrecognized option.
         self.extra_args = [[FORK_H1_EXTRA_ARG], [], [], [FORK_H1_EXTRA_ARG]]
@@ -101,7 +101,7 @@ class ForkVsAevustTest(BitcoinTestFramework):
     def header_full_block_asymmetry(self):
         node0, aevust = self.nodes[0], self.nodes[1]
 
-        self.log.info(f"Diverging node0 (S1) and the Aevust build independently past H1 ({FORK_H1_HEIGHT})")
+        self.log.info(f"Diverging node0 (S6/b) and the Aevust build independently past H1 ({FORK_H1_HEIGHT})")
         # Both nodes start disconnected from genesis, so there's no reason
         # to expect matching hashes at any point -- each mines its own
         # coinbase (different address/timestamp/nonce) even under identical
@@ -139,7 +139,7 @@ class ForkVsAevustTest(BitcoinTestFramework):
         self.connect_nodes(1, 2)
         time.sleep(2)
 
-        self.log.info("Starting IBD on a fresh S1 node connected to 2 Aevust peers + 1 correct S1 peer")
+        self.log.info("Starting IBD on a fresh S6/b node connected to 2 Aevust peers + 1 correct S6/b peer")
         self.connect_nodes(3, 0)
         self.connect_nodes(3, 1)
         self.connect_nodes(3, 2)
@@ -148,7 +148,7 @@ class ForkVsAevustTest(BitcoinTestFramework):
             return self.is_node_alive(fresh) and fresh.getbestblockhash() == node0.getbestblockhash()
 
         self.wait_until(converged, timeout=120)
-        self.log.info("Fresh node converged on the correct S1 chain despite a hostile-majority peer set")
+        self.log.info("Fresh node converged on the correct S6/b chain despite a hostile-majority peer set")
         assert self.is_node_alive(fresh)
         assert_equal(fresh.getbestblockhash(), node0.getbestblockhash())
 

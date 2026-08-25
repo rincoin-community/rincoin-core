@@ -5,23 +5,28 @@
 """Per-branch override surface for the height-840,000 fork test framework.
 
 Every ``consensus/<codename>`` branch (S1, S5/b, S6/b, ...) that implements a
-candidate post-840k ruleset copies this file and edits exactly two things:
+candidate post-840k ruleset copies this file and edits exactly three things:
 
   * The four identity constants (FORK_BRANCH_ID / FORK_NO / FORK_SCENARIO_ID /
     FORK_FORMAT_VERSION) to whatever this branch's consensus code was
     compiled with.
   * The body of ``expected_subsidy()`` to match this branch's subsidy
     formula.
+  * Any additional scenario-shape data ``expected_subsidy()`` needs (this
+    branch's own FORK_SUBSIDY_PHASES table, mirroring
+    Consensus::Params::ForkSubsidyPhases -- other branches may need a
+    differently-shaped constant, or none at all, for their own formula).
 
 Everything else in this module (the commitment byte layout, sig_fork_id
 derivation, script-building helpers) is fixed by the design docs
 (rincoin-consensus840k/technology/consensus-transition.md §5/§6) and is not
 scenario-specific -- it should not need to change between branches.
 
-The values below belong to the ``consensus/s1-testing`` branch specifically.
-They are test-only placeholders (branch_id was freshly generated for this
-branch and is never a mainnet value); do not reuse them for a different
-scenario or for any real release.
+The values below belong to the ``consensus/s6b-testing`` branch specifically.
+They are test-only placeholders (branch_id is the design docs' shared
+canonical synthetic value, never a mainnet value; ForkScenarioId is a
+provisional number pending official upstream assignment); do not reuse them
+for a different scenario or for any real release.
 """
 
 import hashlib
@@ -52,8 +57,24 @@ FORK_NO = 1
 # Provisional, ad-hoc scenario id pending official assignment upstream (none
 # exists yet for any candidate scenario). S1=1, S5/b=2, S6/b=3 by convention
 # across this repo's consensus/*-testing branches.
-FORK_SCENARIO_ID = 1
+FORK_SCENARIO_ID = 3
 FORK_FORMAT_VERSION = 1
+
+# This scenario's own small-scale phase table, mirroring
+# Consensus::Params::ForkSubsidyPhases / CRegTestParams::ForkSubsidyPhases in
+# chainparams.cpp exactly (same values, same H1-relative offsets) -- not
+# mainnet's real table scaled down (mainnet's terminal phase alone is ~228
+# million blocks long), but an independently chosen schedule using the same
+# four-fixed-phases-plus-derived-cutoff structure. Each entry is
+# (offset_from_h1, subsidy_base_units); the last entry's subsidy must be 0
+# (the terminal cutoff).
+FORK_SUBSIDY_PHASES = [
+    (0, 400000000),
+    (50, 200000000),
+    (100, 100000000),
+    (150, 60000000),
+    (160, 0),
+]
 
 assert len(FORK_BRANCH_ID) == 16, "FORK_BRANCH_ID must be exactly 16 bytes"
 
@@ -101,28 +122,31 @@ def sig_fork_id(branch_id=FORK_BRANCH_ID, fork_no=FORK_NO, scenario_id=FORK_SCEN
     return hashlib.sha256(preimage).digest()[:8]
 
 
-def expected_subsidy(height, h1_height=FORK_H1_HEIGHT, halving_interval=210000, base_reward=50 * 10**8):
-    """S1 schedule: recursive integer-floor x19/20 per 210,000-block epoch
-    from H1 onward, no floor, no tail.
-
-    The post-fork series starts from the pre-fork subsidy value at the
-    halving epoch immediately below H1 (i.e. what the ordinary halving
-    schedule already produced just before H1 -- NOT one further halving,
-    which is what a naive continuation of the old rule would give at H1
-    itself). From that base, x19/20 (integer floor) is applied once per
-    completed post-fork epoch, inclusive of the epoch containing `height`.
+def expected_subsidy(height, h1_height=FORK_H1_HEIGHT, halving_interval=150,
+                      base_reward=50 * 10**8, phases=None):
+    """S6/b schedule: a small number of fixed-value phases followed by a
+    hard cutoff to zero, driven entirely by `phases` (defaults to this
+    branch's own FORK_SUBSIDY_PHASES) -- mirrors
+    Consensus::Params::ForkSubsidyPhases / GetBlockSubsidyPostFork()'s own
+    generic table scan on the C++ side exactly, rather than re-deriving the
+    formula (there is no closed-form formula for this scenario; the table
+    *is* the specification). `halving_interval`/`base_reward` only apply to
+    heights below `h1_height`, where the ordinary pre-fork halving rule
+    (untouched by this scenario) still applies.
     """
+    if phases is None:
+        phases = FORK_SUBSIDY_PHASES
+
     if height < h1_height:
         halvings = height // halving_interval
         if halvings >= 64:
             return 0
         return base_reward >> halvings
 
-    pre_fork_halvings = (h1_height - 1) // halving_interval
-    base = base_reward >> pre_fork_halvings
-
-    epoch = (height - h1_height) // halving_interval
-    subsidy = base
-    for _ in range(epoch + 1):
-        subsidy = (subsidy * 19) // 20
+    assert phases[0][0] == 0, "the phase table's first entry must start exactly at h1_height"
+    subsidy = 0
+    for offset, phase_subsidy in phases:
+        if h1_height + offset > height:
+            break
+        subsidy = phase_subsidy
     return subsidy

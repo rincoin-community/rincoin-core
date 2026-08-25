@@ -1299,43 +1299,45 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex
 }
 
 /**
- * S1 scenario post-fork subsidy (rincoin-consensus840k/technology/
- * consensus-transition.md §3): from ForkH1Height onward, recursive
- * integer-floor x19/20 per nSubsidyHalvingInterval-block epoch, no floor, no
- * tail. The series starts from the *pre-fork* subsidy value at the halving
- * epoch immediately below ForkH1Height -- i.e. what the ordinary halving
- * schedule already produced just before the fork -- not one further halving,
- * which is what a naive continuation of the pre-fork rule would give at
- * ForkH1Height itself. Verified against the frozen S1 test vectors: height
- * 839999 = 625000000 (pre-fork, unchanged), height 840000 = 593750000
- * (593750000 == 625000000 * 19 / 20).
+ * S6/b scenario post-fork subsidy (rincoin-consensus840k/analysis/
+ * Rincoin_840k_S6B_Consensus_Change_Specification.qmd): four fixed-value
+ * phases (4 / 2 / 1 / 0.6 RIN) followed by a hard cutoff to zero at a
+ * terminal height *derived* from an exact 168,000,000 RIN issuance ceiling
+ * -- not a designed round number, and not expressible as a clean multiple
+ * of nSubsidyHalvingInterval the way S1's and S5/b's formulas are (see
+ * verification/scripts/verify_s6b_independently.py's derive_terminal_height()
+ * for the derivation this branch's own ForkSubsidyPhases table encodes the
+ * result of).
+ *
+ * Deliberately a plain, generic scan over consensusParams.ForkSubsidyPhases
+ * (see that field's own doc comment in consensus/params.h) rather than a
+ * hardcoded if/else-if chain keyed on magic height multiples. That
+ * alternative was considered directly: a third-party Rincoin implementation
+ * (rincoin-core/rincoin@v1.1) implements a structurally similar Customized
+ * Halving schedule exactly that way, and reviewing it surfaced two things
+ * worth avoiding here -- its hardcoded if-chain has no structural way to
+ * express a different number of phases without rewriting the function, and
+ * (more importantly) it has no terminal cutoff at all, paying 0.6 RIN
+ * forever and making total issuance unbounded, which is a different,
+ * unbounded scenario, not this specification's bounded 168,000,000 RIN
+ * design. A data-driven table keeps the terminal-cutoff phase just another
+ * row (nSubsidy == 0), not a special case, and keeps this function itself
+ * scenario-shape-agnostic: it would work unchanged for a schedule with a
+ * different phase count.
  */
 static CAmount GetBlockSubsidyPostFork(int nHeight, const Consensus::Params& consensusParams)
 {
-    CAmount nBase = 50 * COIN;
-    int nPreForkHalvings = (consensusParams.ForkH1Height - 1) / consensusParams.nSubsidyHalvingInterval;
-    if (nPreForkHalvings < 64) {
-        nBase >>= nPreForkHalvings;
-    } else {
-        nBase = 0;
-    }
+    const auto& phases = consensusParams.ForkSubsidyPhases;
+    assert(!phases.empty());
+    assert(phases.front().nOffsetFromH1 == 0);
 
-    // int64_t: (nHeight - ForkH1Height) can't overflow int, but avoid any
-    // ambiguity for extreme/adversarial nHeight values (e.g. near INT_MAX).
-    const int64_t nEpoch = (int64_t(nHeight) - consensusParams.ForkH1Height) / consensusParams.nSubsidyHalvingInterval;
-
-    // Each epoch step multiplies by 19/20 (~5% reduction) with integer-floor
-    // rounding. While nSubsidy > 0, floor(19x/20) < x for every integer
-    // x >= 1 (19x < 20x, and an integer strictly less than x is at most
-    // x-1), so the value strictly decreases every step and the loop is
-    // bounded by nBase itself -- independent of nEpoch/nHeight. The
-    // `nSubsidy > 0` condition alone is what makes this safe for any
-    // height (a deep chain, a boundary/stress-test value, or an adversarial
-    // one): once it reaches zero the loop exits immediately instead of
-    // iterating nEpoch+1 times doing nothing (0*19/20 == 0 forever).
-    CAmount nSubsidy = nBase;
-    for (int64_t i = 0; i <= nEpoch && nSubsidy > 0; ++i) {
-        nSubsidy = (nSubsidy * 19) / 20;
+    CAmount nSubsidy = 0;
+    for (const auto& phase : phases) {
+        const int64_t nPhaseStart = int64_t(consensusParams.ForkH1Height) + phase.nOffsetFromH1;
+        if (nPhaseStart > nHeight) {
+            break;
+        }
+        nSubsidy = phase.nSubsidy;
     }
     return nSubsidy;
 }

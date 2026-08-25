@@ -14,41 +14,53 @@
 
 BOOST_FIXTURE_TEST_SUITE(fork_subsidy_tests, BasicTestingSetup)
 
-// S1 scenario (rincoin-consensus840k/technology/consensus-transition.md §3):
-// recursive integer-floor x19/20 per 210,000-block epoch from height
-// 840,000 onward, no floor, no tail. Frozen vectors cross-checked directly
-// against the authoritative source (Open Risk R2, now closed): the
-// rincoin-whitepaper repo's data/boundary_vectors.csv at commit
-// 9533f6b33d53fd78affc092ac04c04dcfb8c2797 (the same commit
-// tmp/fork-design-audit's test plan cites for these rows), rows 114-116 and
-// 141-142 for scenario S1. Every value below is copied verbatim from that
-// file, not derived from this implementation.
-BOOST_AUTO_TEST_CASE(s1_subsidy_frozen_vectors)
+// S6/b scenario (rincoin-consensus840k/analysis/
+// Rincoin_840k_S6B_Consensus_Change_Specification.qmd): four fixed-value
+// phases (4 / 2 / 1 / 0.6 RIN) followed by a hard cutoff to zero at a
+// terminal height derived from an exact 168,000,000 RIN issuance ceiling.
+// Frozen vectors copied verbatim from
+// analysis/data/S6B_normative_test_vectors.csv (the file the specification
+// itself references as its own generated vector set), not derived from
+// this implementation.
+BOOST_AUTO_TEST_CASE(s6b_subsidy_frozen_vectors)
 {
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     const Consensus::Params& params = chainParams->GetConsensus();
     BOOST_CHECK_EQUAL(params.ForkH1Height, 840000);
 
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(839999, params), CAmount{625000000});
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(840000, params), CAmount{593750000});
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(840001, params), CAmount{593750000});
-    // Second post-fork epoch boundary, still within the first csv block.
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(840000 + 210000, params), CAmount{(593750000LL * 19) / 20});
+    // S6B-001/002/003: activation block and its immediate neighbours.
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(839999, params), CAmount{625000000}); // pre-fork, unchanged
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(840000, params), CAmount{400000000}); // phase 1: 4 RIN
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(840001, params), CAmount{400000000});
 
-    // Multi-epoch boundary pair (9 vs. 10 recursive x19/20 steps applied) --
-    // a much stronger check of the recursive formula than the H1-adjacent
-    // values above, since an off-by-one in the epoch count would only ever
-    // show up this far out.
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(2729999, params), CAmount{393905878});
-    BOOST_CHECK_EQUAL(GetBlockSubsidy(2730000, params), CAmount{374210584});
+    // S6B-004/005: first phase boundary.
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(2099999, params), CAmount{400000000}); // final 4 RIN block
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(2100000, params), CAmount{200000000}); // first 2 RIN block
+
+    // S6B-007/008: second phase boundary.
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(4199999, params), CAmount{200000000}); // final 2 RIN block
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(4200000, params), CAmount{100000000}); // first 1 RIN block
+
+    // S6B-010/011: third phase boundary.
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(6299999, params), CAmount{100000000}); // final 1 RIN block
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(6300000, params), CAmount{60000000});  // first 0.6 RIN block
+
+    // S6B-014/015/016: terminal region -- the derived cutoff height itself,
+    // not a designed round number. Getting this wrong (even by one block)
+    // would either shortchange or overpay the entire 168,000,000 RIN
+    // ceiling, so this is the single most important pair to get exactly
+    // right for this scenario.
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(234587499, params), CAmount{60000000}); // final non-zero block
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(234587500, params), CAmount{0});        // first zero-subsidy block
+    BOOST_CHECK_EQUAL(GetBlockSubsidy(234587501, params), CAmount{0});
 }
 
-BOOST_AUTO_TEST_CASE(s1_subsidy_pre_fork_unchanged)
+BOOST_AUTO_TEST_CASE(s6b_subsidy_pre_fork_unchanged)
 {
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     const Consensus::Params& params = chainParams->GetConsensus();
 
-    // Ordinary geometric halving below ForkH1Height, untouched by S1.
+    // Ordinary geometric halving below ForkH1Height, untouched by S6/b.
     BOOST_CHECK_EQUAL(GetBlockSubsidy(0, params), CAmount{50 * COIN});
     BOOST_CHECK_EQUAL(GetBlockSubsidy(209999, params), CAmount{50 * COIN});
     BOOST_CHECK_EQUAL(GetBlockSubsidy(210000, params), CAmount{25 * COIN});
@@ -56,29 +68,37 @@ BOOST_AUTO_TEST_CASE(s1_subsidy_pre_fork_unchanged)
     BOOST_CHECK_EQUAL(GetBlockSubsidy(630000, params), CAmount{625000000LL});
 }
 
-// The ceiling must strictly decrease across the H1 epoch boundary and every
-// subsequent epoch boundary -- an off-by-one here would silently reopen the
-// pre-fork subsidy for post-fork heights.
-BOOST_AUTO_TEST_CASE(s1_subsidy_strictly_decreasing_across_epochs)
+// The ceiling must strictly decrease across every phase boundary, and the
+// table's last phase must be exactly zero -- an off-by-one in the phase
+// scan, or a table missing its terminal entry, would either reopen an
+// earlier phase's ceiling past its boundary or (worse) never cut off,
+// making issuance unbounded.
+BOOST_AUTO_TEST_CASE(s6b_subsidy_strictly_decreasing_then_terminates)
 {
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     const Consensus::Params& params = chainParams->GetConsensus();
 
-    CAmount prev = GetBlockSubsidy(params.ForkH1Height - 1, params);
-    for (int epoch = 0; epoch < 5; ++epoch) {
-        CAmount cur = GetBlockSubsidy(params.ForkH1Height + epoch * 210000, params);
+    BOOST_REQUIRE(!params.ForkSubsidyPhases.empty());
+    BOOST_CHECK_EQUAL(params.ForkSubsidyPhases.back().nSubsidy, CAmount{0});
+
+    CAmount prev = std::numeric_limits<CAmount>::max();
+    for (const auto& phase : params.ForkSubsidyPhases) {
+        const int height = params.ForkH1Height + phase.nOffsetFromH1;
+        CAmount cur = GetBlockSubsidy(height, params);
+        BOOST_CHECK_EQUAL(cur, phase.nSubsidy);
         BOOST_CHECK_LT(cur, prev);
         prev = cur;
     }
+    BOOST_CHECK_EQUAL(prev, CAmount{0});
 }
 
 // Regression guard: GetBlockSubsidyPostFork() must be O(1) in practice for
-// any height, not O(nEpoch) -- an unbounded per-epoch loop previously made
-// this function take unbounded time for very large heights (near INT_MAX),
-// which is a real DoS-relevant concern for a function on the block
-// validation path, not just a theoretical one (it hung a full local test
-// run for hours before being caught here).
-BOOST_AUTO_TEST_CASE(s1_subsidy_extreme_height_is_fast_and_zero)
+// any height, not O(height) -- inherited from S1's implementation, whose
+// own version of this test caught a real unbounded-loop DoS-relevant bug
+// during development. S6/b's implementation scans a small, fixed-size
+// table (never loops on the height itself), so this guards against a
+// future regression toward a height-dependent loop, not a repeat finding.
+BOOST_AUTO_TEST_CASE(s6b_subsidy_extreme_height_is_fast_and_zero)
 {
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     const Consensus::Params& params = chainParams->GetConsensus();
@@ -87,7 +107,7 @@ BOOST_AUTO_TEST_CASE(s1_subsidy_extreme_height_is_fast_and_zero)
     CAmount subsidy = GetBlockSubsidy(std::numeric_limits<int>::max(), params);
     const auto elapsed = std::chrono::steady_clock::now() - start;
 
-    BOOST_CHECK_EQUAL(subsidy, CAmount{0}); // long decayed to zero by any realistic height
+    BOOST_CHECK_EQUAL(subsidy, CAmount{0}); // past the terminal cutoff
     BOOST_CHECK(elapsed < std::chrono::seconds(1));
 }
 
