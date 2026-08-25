@@ -2,7 +2,7 @@
 # Copyright (c) 2026 The Rincoin developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test S1 interop against two old (pre-840k-design) Rincoin releases
+"""Test S5/b interop against two old (pre-840k-design) Rincoin releases
 (Scenario 3: old+new node).
 
   - v1.1.0 / legacy-1.1 (rincoin-community/rincoin-core). This repo's own
@@ -10,7 +10,7 @@
     deliberately shuts down at block 840,000" -- but that was verified here
     (Open Risk R8 in the approved plan) to be a *policy* statement about the
     team's development intentions, not a consensus rule actually compiled
-    into the v1.1.0 binary: connected to a live post-H1 S1 chain, it
+    into the v1.1.0 binary: connected to a live post-H1 S5/b chain, it
     followed every single block with zero rejection, well past H1, with no
     fork-awareness of any kind. This is exactly the gap the coinbase
     commitment + sig_fork_id design exists to close -- an old, unmodified
@@ -32,7 +32,7 @@
     and the two chains simply never converge (which they never could have,
     with or without this fork).
 
-Both cases must leave node0 (our S1 build) itself completely unaffected,
+Both cases must leave node0 (our S5/b build) itself completely unaffected,
 and must not crash either old node.
 
 Requires reference binaries built via test/build_reference_node.py:
@@ -63,7 +63,7 @@ class ForkVsLegacyTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 3
         self.setup_clean_chain = True
-        # node0 = our S1 build, node1 = v1.1.0/legacy-1.1, node2 = v1.0.1.
+        # node0 = our S5/b build, node1 = v1.1.0/legacy-1.1, node2 = v1.0.1.
         # -forkh1height= only exists on node0's build -- the old binaries
         # would fail to start on an unrecognized option.
         self.extra_args = [[FORK_H1_EXTRA_ARG], [], []]
@@ -113,7 +113,7 @@ class ForkVsLegacyTest(BitcoinTestFramework):
         assert_equal(legacy101.getblockcount(), 0)
         assert legacy101.getbestblockhash() != node0.getbestblockhash()
 
-        self.log.info("node0 mines past H1 with S1 rules (commitment + new subsidy ceiling)")
+        self.log.info("node0 mines past H1 with S5/b rules (commitment + new subsidy ceiling)")
         mine_to_height(node0, FORK_H1_HEIGHT + 2)
 
         self.log.info("Waiting for legacy-1.1 to receive and process the post-H1 chain")

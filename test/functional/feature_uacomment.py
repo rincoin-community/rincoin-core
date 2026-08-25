@@ -16,19 +16,19 @@ class UacommentTest(BitcoinTestFramework):
         self.setup_clean_chain = True
 
     def run_test(self):
-        # consensus/s1-testing: this build always stamps a fixed
-        # "s1-testing-rc1" marker as the first uacomment component (see the
+        # consensus/s5b-testing: this build always stamps a fixed
+        # "s5b-testing-rc1" marker as the first uacomment component (see the
         # unconditional uacomments.push_back() in init.cpp) so the
         # fork-testing build self-identifies on the wire regardless of what
         # -uacomment values an operator adds -- every expected subversion
         # string below has to account for it, unlike upstream.
         self.log.info("test multiple -uacomment")
         subversion = self.nodes[0].getnetworkinfo()["subversion"]
-        assert subversion.endswith("(s1-testing-rc1; testnode0)/"), subversion
+        assert subversion.endswith("(s5b-testing-rc1; testnode0)/"), subversion
 
         self.restart_node(0, ["-uacomment=foo"])
         subversion = self.nodes[0].getnetworkinfo()["subversion"]
-        assert subversion.endswith("(s1-testing-rc1; testnode0; foo)/"), subversion
+        assert subversion.endswith("(s5b-testing-rc1; testnode0; foo)/"), subversion
 
         self.log.info("test -uacomment max length")
         self.stop_node(0)

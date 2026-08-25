@@ -109,16 +109,25 @@ BOOST_AUTO_TEST_CASE(block_subsidy_monotonic_test)
 
 BOOST_AUTO_TEST_CASE(subsidy_limit_test)
 {
-    // consensus/s1-testing: this bound reflects the S1 post-840,000 subsidy
-    // schedule (recursive x19/20 per epoch, no floor/tail -- see
+    // consensus/s5b-testing: this bound reflects the S5/b post-840,000
+    // subsidy schedule (extended 10x epoch, phase-anchored to H1 -
+    // nSubsidyHalvingInterval, then plain binary halving -- see
     // GetBlockSubsidyPostFork() in validation.cpp), not the original
     // pure-halving policy. The old pure-halving total was 2099999997690000;
-    // S1's slower decay after H1 raises it. The new total (computed via
-    // this same step-1000 sampling approximation) is within ~0.0001% of the
-    // rincoin-consensus840k design docs' independently-published S1 max
-    // issuance estimate of ~44,625,000 RIN (~4462500000000000 base units),
-    // which corroborates the subsidy formula rather than just re-asserting
-    // whatever the code currently computes.
+    // S5/b's slower decay after H1 raises it.
+    //
+    // Note this loop's fixed 56,000,000-block cutoff is *below* S5/b's
+    // first-zero-subsidy height (63,630,000, rincoin-consensus840k/
+    // analysis/Rincoin_840k_S5B_Consensus_Change_Specification.qmd), so the
+    // frozen value below is a bounded partial sum, not the scenario's true
+    // maximum lifetime issuance -- that full figure (44,624,999.76900000
+    // RIN) is cross-checked independently in
+    // verification/scripts/independently_derive_s5b_schedule.py against
+    // the specification's own normative vectors, not here. The partial sum
+    // here is within ~0.0006% of that full figure (the un-summed tail past
+    // height 56,000,000 contributes only a few tenths of a RIN, since the
+    // subsidy is already minuscule by then), corroborating the formula
+    // rather than just re-asserting whatever the code currently computes.
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     CAmount nSum = 0;
     for (int nHeight = 0; nHeight < 56000000; nHeight += 1000) {
@@ -127,7 +136,7 @@ BOOST_AUTO_TEST_CASE(subsidy_limit_test)
         nSum += nSubsidy * 1000;
         BOOST_CHECK(MoneyRange(nSum));
     }
-    BOOST_CHECK_EQUAL(nSum, CAmount{4462495996280000});
+    BOOST_CHECK_EQUAL(nSum, CAmount{4462499950230000});
 }
 
 BOOST_AUTO_TEST_CASE(block_subsidy_mainnet_spot_check)

@@ -1299,16 +1299,32 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex
 }
 
 /**
- * S1 scenario post-fork subsidy (rincoin-consensus840k/technology/
- * consensus-transition.md §3): from ForkH1Height onward, recursive
- * integer-floor x19/20 per nSubsidyHalvingInterval-block epoch, no floor, no
- * tail. The series starts from the *pre-fork* subsidy value at the halving
- * epoch immediately below ForkH1Height -- i.e. what the ordinary halving
- * schedule already produced just before the fork -- not one further halving,
- * which is what a naive continuation of the pre-fork rule would give at
- * ForkH1Height itself. Verified against the frozen S1 test vectors: height
- * 839999 = 625000000 (pre-fork, unchanged), height 840000 = 593750000
- * (593750000 == 625000000 * 19 / 20).
+ * S5/b scenario post-fork subsidy (rincoin-consensus840k/analysis/
+ * Rincoin_840k_S5B_Consensus_Change_Specification.qmd): an extended,
+ * 10x-longer halving epoch, phase-anchored to the pre-activation epoch
+ * boundary at ForkH1Height - nSubsidyHalvingInterval (630,000 on mainnet,
+ * where the deployed 6.25 RIN epoch began), not to ForkH1Height itself.
+ * Concretely: subsidy(h) = nBase >> n, where nBase is the *pre-fork*
+ * subsidy value at that anchor epoch (625,000,000 on mainnet, same
+ * quantity S1's implementation calls nBase) and
+ * n = floor((h - anchor) / (10 * nSubsidyHalvingInterval)). Because
+ * ForkH1Height - anchor == nSubsidyHalvingInterval (one ordinary epoch),
+ * which is less than the 10x-long post-fork epoch, n == 0 for the entire
+ * first post-fork epoch: the subsidy is flat at nBase from ForkH1Height
+ * through the first halving, not stepped down immediately the way S1's
+ * formula is. Verified against the frozen S5/b test vectors: height
+ * 839999 = 625000000 (pre-fork, unchanged), height 840000 and height
+ * 2729999 both = 625000000 (n=0 throughout), height 2730000 = 312500000
+ * (n=1, first halving).
+ *
+ * Anchor and epoch length are derived from ForkH1Height/
+ * nSubsidyHalvingInterval rather than hardcoded to mainnet's 630,000/
+ * 2,100,000, so regtest/preview (which use much smaller values for both)
+ * get proportionally-scaled, reachable-in-a-functional-test behavior for
+ * free -- the same lesson applied to S6/b's phase table (see that
+ * scenario's own doc comment on this function for the fuller rationale,
+ * informed by reviewing how a third-party implementation handled the
+ * analogous problem).
  */
 static CAmount GetBlockSubsidyPostFork(int nHeight, const Consensus::Params& consensusParams)
 {
@@ -1320,24 +1336,19 @@ static CAmount GetBlockSubsidyPostFork(int nHeight, const Consensus::Params& con
         nBase = 0;
     }
 
-    // int64_t: (nHeight - ForkH1Height) can't overflow int, but avoid any
-    // ambiguity for extreme/adversarial nHeight values (e.g. near INT_MAX).
-    const int64_t nEpoch = (int64_t(nHeight) - consensusParams.ForkH1Height) / consensusParams.nSubsidyHalvingInterval;
+    const int64_t nAnchor = int64_t(consensusParams.ForkH1Height) - consensusParams.nSubsidyHalvingInterval;
+    const int64_t nPostForkEpochLength = int64_t(10) * consensusParams.nSubsidyHalvingInterval;
+    const int64_t nPhase = (int64_t(nHeight) - nAnchor) / nPostForkEpochLength;
 
-    // Each epoch step multiplies by 19/20 (~5% reduction) with integer-floor
-    // rounding. While nSubsidy > 0, floor(19x/20) < x for every integer
-    // x >= 1 (19x < 20x, and an integer strictly less than x is at most
-    // x-1), so the value strictly decreases every step and the loop is
-    // bounded by nBase itself -- independent of nEpoch/nHeight. The
-    // `nSubsidy > 0` condition alone is what makes this safe for any
-    // height (a deep chain, a boundary/stress-test value, or an adversarial
-    // one): once it reaches zero the loop exits immediately instead of
-    // iterating nEpoch+1 times doing nothing (0*19/20 == 0 forever).
-    CAmount nSubsidy = nBase;
-    for (int64_t i = 0; i <= nEpoch && nSubsidy > 0; ++i) {
-        nSubsidy = (nSubsidy * 19) / 20;
+    // Right-shifting by >= the operand's bit width is undefined behaviour;
+    // nBase is well below 2^30, so it's already exactly zero by nPhase==30
+    // (matching the spec's own "phase >= 30 -> 0" clause), but guard
+    // explicitly rather than rely on that coincidence for an adversarial
+    // nHeight (e.g. near INT_MAX) driving nPhase arbitrarily high.
+    if (nPhase >= 30) {
+        return 0;
     }
-    return nSubsidy;
+    return nBase >> nPhase;
 }
 
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)

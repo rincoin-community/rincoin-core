@@ -5,23 +5,28 @@
 """Per-branch override surface for the height-840,000 fork test framework.
 
 Every ``consensus/<codename>`` branch (S1, S5/b, S6/b, ...) that implements a
-candidate post-840k ruleset copies this file and edits exactly two things:
+candidate post-840k ruleset copies this file and edits exactly three things:
 
   * The four identity constants (FORK_BRANCH_ID / FORK_NO / FORK_SCENARIO_ID /
     FORK_FORMAT_VERSION) to whatever this branch's consensus code was
     compiled with.
   * The body of ``expected_subsidy()`` to match this branch's subsidy
     formula.
+  * FORK_SUBSIDY_NEXT_CHANGE_EPOCHS, if this scenario's post-activation epoch
+    length differs from nSubsidyHalvingInterval (S1's does not; S5/b's is
+    10x longer, so its first post-activation subsidy change lands later than
+    one plain halving_interval past H1 -- see that constant's own comment).
 
 Everything else in this module (the commitment byte layout, sig_fork_id
 derivation, script-building helpers) is fixed by the design docs
 (rincoin-consensus840k/technology/consensus-transition.md §5/§6) and is not
 scenario-specific -- it should not need to change between branches.
 
-The values below belong to the ``consensus/s1-testing`` branch specifically.
-They are test-only placeholders (branch_id was freshly generated for this
-branch and is never a mainnet value); do not reuse them for a different
-scenario or for any real release.
+The values below belong to the ``consensus/s5b-testing`` branch specifically.
+They are test-only placeholders (branch_id is the design docs' shared
+canonical synthetic value, never a mainnet value; ForkScenarioId is a
+provisional number pending official upstream assignment); do not reuse them
+for a different scenario or for any real release.
 """
 
 import hashlib
@@ -52,8 +57,18 @@ FORK_NO = 1
 # Provisional, ad-hoc scenario id pending official assignment upstream (none
 # exists yet for any candidate scenario). S1=1, S5/b=2, S6/b=3 by convention
 # across this repo's consensus/*-testing branches.
-FORK_SCENARIO_ID = 1
+FORK_SCENARIO_ID = 2
 FORK_FORMAT_VERSION = 1
+
+# How many nSubsidyHalvingInterval-multiples after H1 the first post-
+# activation subsidy *change* occurs -- used by feature_fork_subsidy.py to
+# find a real "next epoch boundary" without hardcoding a scenario-specific
+# distance in that scenario-agnostic-by-design test file. S5/b's phase 0
+# starts at anchor = H1 - halving_interval (one ordinary epoch before H1)
+# and is 10*halving_interval long, so phase 0 doesn't end until
+# anchor + 10*halving_interval = H1 + 9*halving_interval -- H1 is already
+# one interval *into* phase 0, not at its start.
+FORK_SUBSIDY_NEXT_CHANGE_EPOCHS = 9
 
 assert len(FORK_BRANCH_ID) == 16, "FORK_BRANCH_ID must be exactly 16 bytes"
 
@@ -102,15 +117,18 @@ def sig_fork_id(branch_id=FORK_BRANCH_ID, fork_no=FORK_NO, scenario_id=FORK_SCEN
 
 
 def expected_subsidy(height, h1_height=FORK_H1_HEIGHT, halving_interval=210000, base_reward=50 * 10**8):
-    """S1 schedule: recursive integer-floor x19/20 per 210,000-block epoch
-    from H1 onward, no floor, no tail.
+    """S5/b schedule: an extended, 10x-longer halving epoch, phase-anchored
+    to the pre-activation epoch boundary at h1_height - halving_interval
+    (not to h1_height itself), then plain binary halving per extended
+    epoch, no floor, no tail (rincoin-consensus840k/analysis/
+    Rincoin_840k_S5B_Consensus_Change_Specification.qmd).
 
-    The post-fork series starts from the pre-fork subsidy value at the
-    halving epoch immediately below H1 (i.e. what the ordinary halving
-    schedule already produced just before H1 -- NOT one further halving,
-    which is what a naive continuation of the old rule would give at H1
-    itself). From that base, x19/20 (integer floor) is applied once per
-    completed post-fork epoch, inclusive of the epoch containing `height`.
+    The post-fork series starts from the pre-fork subsidy value at that
+    anchor epoch (the same "base" quantity S1's formula also starts from).
+    Because h1_height is exactly one ordinary epoch past the anchor, and the
+    post-fork epoch is ten ordinary epochs long, the subsidy is flat at
+    `base` for the entire first post-fork epoch (h1_height through
+    h1_height + 9*halving_interval - 1), not stepped down immediately.
     """
     if height < h1_height:
         halvings = height // halving_interval
@@ -121,8 +139,9 @@ def expected_subsidy(height, h1_height=FORK_H1_HEIGHT, halving_interval=210000, 
     pre_fork_halvings = (h1_height - 1) // halving_interval
     base = base_reward >> pre_fork_halvings
 
-    epoch = (height - h1_height) // halving_interval
-    subsidy = base
-    for _ in range(epoch + 1):
-        subsidy = (subsidy * 19) // 20
-    return subsidy
+    anchor = h1_height - halving_interval
+    post_fork_epoch_length = 10 * halving_interval
+    phase = (height - anchor) // post_fork_epoch_length
+    if phase >= 30:
+        return 0
+    return base >> phase

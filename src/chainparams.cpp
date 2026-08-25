@@ -131,7 +131,7 @@ public:
         // already runs >= 70017); 70018 (RinHash-aware) is required from the
         // fourth-halving boundary onward.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {840000, 70018}};
-        // consensus/s1-testing: height-840,000 fork identity (S1 scenario).
+        // consensus/s5b-testing: height-840,000 fork identity (S5/b scenario).
         // branch_id is the canonical synthetic test value published in
         // technology/consensus-transition.md §5 -- shared, scenario-agnostic
         // infrastructure, not specific to S1 (S5/b and S6/b testing branches
@@ -144,7 +144,7 @@ public:
         consensus.ForkH1Height = 840000;
         consensus.ForkBranchId = ParseForkBranchId("00112233445566778899aabbccddeeff");
         consensus.ForkNo = 1;
-        consensus.ForkScenarioId = 1; // S1
+        consensus.ForkScenarioId = 2; // S5B
         consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -375,12 +375,12 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): 70017
         // MWEB-capable baseline from genesis, 70018 (RinHash) from height 4200.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {4200, 70018}};
-        // consensus/s1-testing: same test-only fork identity as mainnet (see
+        // consensus/s5b-testing: same test-only fork identity as mainnet (see
         // CMainParams), just past the existing testnet proto-floor bump.
         consensus.ForkH1Height = 4300;
         consensus.ForkBranchId = ParseForkBranchId("00112233445566778899aabbccddeeff");
         consensus.ForkNo = 1;
-        consensus.ForkScenarioId = 1; // S1
+        consensus.ForkScenarioId = 2; // S5B
         consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
@@ -472,7 +472,7 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): 70017
         // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
-        // consensus/s1-testing: same test-only fork identity as mainnet (see
+        // consensus/s5b-testing: same test-only fork identity as mainnet (see
         // CMainParams). Kept deliberately high by default: several existing
         // C++ unit test fixtures (e.g. MinerTestingSetup in
         // test/validation_block_tests.cpp) build a whole chain of blocks
@@ -495,7 +495,7 @@ public:
         consensus.ForkH1Height = 500000;
         consensus.ForkBranchId = ParseForkBranchId("00112233445566778899aabbccddeeff");
         consensus.ForkNo = 1;
-        consensus.ForkScenarioId = 1; // S1
+        consensus.ForkScenarioId = 2; // S5B
         consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
         consensus.nPowTargetSpacing = 60; // match mainnet spacing (regtest convention)
@@ -679,7 +679,7 @@ public:
         // Peer-protocol-version floor schedule (height -> min version): 70017
         // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
-        // consensus/s1-testing: same test-only fork identity as mainnet (see
+        // consensus/s5b-testing: same test-only fork identity as mainnet (see
         // CMainParams). Preview is a publicly-reachable rehearsal chain, so
         // this is the network where S1's fork behaviour gets exercised under
         // real (if fast) PoW conditions before anything touches mainnet. Kept
@@ -688,7 +688,7 @@ public:
         consensus.ForkH1Height = 200;
         consensus.ForkBranchId = ParseForkBranchId("00112233445566778899aabbccddeeff");
         consensus.ForkNo = 1;
-        consensus.ForkScenarioId = 1; // S1
+        consensus.ForkScenarioId = 2; // S5B
         consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
