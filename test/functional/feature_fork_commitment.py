@@ -35,10 +35,11 @@ from test_framework.fork_util import (
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal
 
-# The Rev 4.0 design doc's generic test vector -- guaranteed different from
-# this branch's own FORK_BRANCH_ID, and explicitly documented as "never a
-# mainnet value" either way.
-WRONG_BRANCH_ID = bytes.fromhex("00112233445566778899aabbccddeeff")
+# This branch's own pre-migration ad-hoc branch_id -- guaranteed different
+# from the current FORK_BRANCH_ID (the Rev 4.0 design doc's canonical
+# synthetic test vector, which FORK_BRANCH_ID was migrated to), and, like
+# FORK_BRANCH_ID, explicitly never a mainnet value either way.
+WRONG_BRANCH_ID = bytes.fromhex("6f2908c82838dab02cae3b9e527a600c")
 
 
 class ForkCommitmentTest(BitcoinTestFramework):

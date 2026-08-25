@@ -42,11 +42,16 @@ from test_framework.script import CScript, OP_RETURN
 FORK_H1_HEIGHT = 200
 FORK_H1_EXTRA_ARG = f"-forkh1height={FORK_H1_HEIGHT}"
 
-# Opaque 128-bit lineage id, big-endian byte string. Test-only value for the
-# S1 branch: freshly generated, never a mainnet value.
-FORK_BRANCH_ID = bytes.fromhex("6f2908c82838dab02cae3b9e527a600c")
+# Opaque 128-bit lineage id, big-endian byte string. Canonical synthetic test
+# value published in technology/consensus-transition.md §5 -- shared,
+# scenario-agnostic infrastructure (S5/b and S6/b testing branches use the
+# same value), never a mainnet value.
+FORK_BRANCH_ID = bytes.fromhex("00112233445566778899aabbccddeeff")
 
 FORK_NO = 1
+# Provisional, ad-hoc scenario id pending official assignment upstream (none
+# exists yet for any candidate scenario). S1=1, S5/b=2, S6/b=3 by convention
+# across this repo's consensus/*-testing branches.
 FORK_SCENARIO_ID = 1
 FORK_FORMAT_VERSION = 1
 

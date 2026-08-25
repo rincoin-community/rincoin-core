@@ -132,12 +132,17 @@ public:
         // fourth-halving boundary onward.
         consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {840000, 70018}};
         // consensus/s1-testing: height-840,000 fork identity (S1 scenario).
-        // TEST-ONLY VALUES -- branch_id was freshly generated for this
-        // testing branch and must never be reused as a real mainnet value.
-        // This whole build additionally refuses to run on mainnet at all
-        // unless RINCOIN_TESTING_ALLOW_MAINNET=1 is set (src/init.cpp).
+        // branch_id is the canonical synthetic test value published in
+        // technology/consensus-transition.md §5 -- shared, scenario-agnostic
+        // infrastructure, not specific to S1 (S5/b and S6/b testing branches
+        // use the same value). ForkScenarioId is a provisional, ad-hoc
+        // number pending official assignment upstream (none exists yet for
+        // any candidate scenario) -- it, not branch_id, is what a mainnet
+        // deployment must never reuse as-is. This whole build additionally
+        // refuses to run on mainnet at all unless
+        // RINCOIN_TESTING_ALLOW_MAINNET=1 is set (src/init.cpp).
         consensus.ForkH1Height = 840000;
-        consensus.ForkBranchId = ParseForkBranchId("6f2908c82838dab02cae3b9e527a600c");
+        consensus.ForkBranchId = ParseForkBranchId("00112233445566778899aabbccddeeff");
         consensus.ForkNo = 1;
         consensus.ForkScenarioId = 1; // S1
         consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
@@ -373,7 +378,7 @@ public:
         // consensus/s1-testing: same test-only fork identity as mainnet (see
         // CMainParams), just past the existing testnet proto-floor bump.
         consensus.ForkH1Height = 4300;
-        consensus.ForkBranchId = ParseForkBranchId("6f2908c82838dab02cae3b9e527a600c");
+        consensus.ForkBranchId = ParseForkBranchId("00112233445566778899aabbccddeeff");
         consensus.ForkNo = 1;
         consensus.ForkScenarioId = 1; // S1
         consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
@@ -488,7 +493,7 @@ public:
         // UpdateActivationParametersFromArgs below, matching the existing
         // -segwitheight= convention) rather than relying on this default.
         consensus.ForkH1Height = 500000;
-        consensus.ForkBranchId = ParseForkBranchId("6f2908c82838dab02cae3b9e527a600c");
+        consensus.ForkBranchId = ParseForkBranchId("00112233445566778899aabbccddeeff");
         consensus.ForkNo = 1;
         consensus.ForkScenarioId = 1; // S1
         consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
@@ -681,7 +686,7 @@ public:
         // low (well below MWEB's activation height here) for the same reason
         // as regtest -- see the comment on CRegTestParams::ForkH1Height.
         consensus.ForkH1Height = 200;
-        consensus.ForkBranchId = ParseForkBranchId("6f2908c82838dab02cae3b9e527a600c");
+        consensus.ForkBranchId = ParseForkBranchId("00112233445566778899aabbccddeeff");
         consensus.ForkNo = 1;
         consensus.ForkScenarioId = 1; // S1
         consensus.ForkSigId = ForkCommitment::ComputeForkSigId(consensus.ForkBranchId, consensus.ForkNo, consensus.ForkScenarioId);
