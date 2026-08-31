@@ -129,11 +129,15 @@ jobs:
             --out-json fork-test-report.json \
             --out-md fork-test-report.md
 
+      - name: Compute safe artifact name
+        if: always()
+        run: echo "SAFE_REF_NAME=${GITHUB_REF_NAME//\//-}" >> "$GITHUB_ENV"
+
       - name: Upload fork scenario report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fork-scenario-results-${{ replace(github.ref_name, '/', '-') }}
+          name: fork-scenario-results-${{ env.SAFE_REF_NAME }}
           path: |
             fork-test-report.json
             fork-test-report.md
