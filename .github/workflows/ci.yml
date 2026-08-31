@@ -133,7 +133,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: fork-scenario-results-${{ github.ref_name }}
+          name: fork-scenario-results-${{ replace(github.ref_name, '/', '-') }}
           path: |
             fork-test-report.json
             fork-test-report.md
