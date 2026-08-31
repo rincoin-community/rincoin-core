@@ -550,7 +550,7 @@ static CAmount AmountFromValue(const UniValue& value)
 
 static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 {
-    // consensus/s1-testing: this build can construct *signed*
+    // consensus/s6b-testing: this build can construct *signed*
     // mainnet-looking transactions entirely offline (Open Risk R6) -- apply
     // the same mainnet guard as rincoind/rincoin-qt (see
     // CheckMainnetTestingGuard() in init.cpp) rather than leaving this tool
@@ -567,7 +567,7 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
         const char* allow_mainnet = std::getenv("RINCOIN_TESTING_ALLOW_MAINNET");
         if (allow_mainnet == nullptr || std::string(allow_mainnet) != "1") {
             throw std::runtime_error(
-                "This is a consensus-testing build (height-840,000 fork rules, S1 scenario). "
+                "This is a consensus-testing build (height-840,000 fork rules, S6/b scenario). "
                 "It refuses to sign mainnet transactions unless RINCOIN_TESTING_ALLOW_MAINNET=1 "
                 "is set in the process environment.");
         }
