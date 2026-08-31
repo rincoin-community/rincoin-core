@@ -102,20 +102,6 @@ static int AppInitRawTx(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    // consensus/s1-testing: this build can construct signed mainnet-looking
-    // transactions entirely offline (Open Risk R6) -- apply the same
-    // mainnet guard as rincoind/rincoin-qt (see CheckMainnetTestingGuard()
-    // in init.cpp) rather than leaving this tool uncovered.
-    if (Params().NetworkIDString() == CBaseChainParams::MAIN) {
-        const char* allow_mainnet = std::getenv("RINCOIN_TESTING_ALLOW_MAINNET");
-        if (allow_mainnet == nullptr || std::string(allow_mainnet) != "1") {
-            tfm::format(std::cerr, "Error: This is a consensus-testing build (height-840,000 fork rules, S1 scenario). "
-                        "It refuses to construct mainnet transactions unless RINCOIN_TESTING_ALLOW_MAINNET=1 is set in "
-                        "the process environment.\n");
-            return EXIT_FAILURE;
-        }
-    }
-
     fCreateBlank = gArgs.GetBoolArg("-create", false);
 
     if (argc < 2 || HelpRequested(gArgs)) {
@@ -564,6 +550,29 @@ static CAmount AmountFromValue(const UniValue& value)
 
 static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 {
+    // consensus/s1-testing: this build can construct *signed*
+    // mainnet-looking transactions entirely offline (Open Risk R6) -- apply
+    // the same mainnet guard as rincoind/rincoin-qt (see
+    // CheckMainnetTestingGuard() in init.cpp) rather than leaving this tool
+    // uncovered. Scoped to the "sign" command specifically, not every
+    // rincoin-tx invocation: the risk is a signed transaction that could be
+    // broadcast against real mainnet, not offline structural manipulation
+    // (create/delete/locktime/etc.) that produces nothing signable. An
+    // earlier version of this guard fired unconditionally in AppInitRawTx(),
+    // which broke bitcoin-tx's entire pre-existing test suite (dozens of
+    // unrelated cases run on the default/main chain) -- caught by CI, not
+    // local testing, since `make check`'s full target wasn't run locally
+    // before this branch was first pushed.
+    if (Params().NetworkIDString() == CBaseChainParams::MAIN) {
+        const char* allow_mainnet = std::getenv("RINCOIN_TESTING_ALLOW_MAINNET");
+        if (allow_mainnet == nullptr || std::string(allow_mainnet) != "1") {
+            throw std::runtime_error(
+                "This is a consensus-testing build (height-840,000 fork rules, S1 scenario). "
+                "It refuses to sign mainnet transactions unless RINCOIN_TESTING_ALLOW_MAINNET=1 "
+                "is set in the process environment.");
+        }
+    }
+
     int nHashType = SIGHASH_ALL;
 
     if (flagStr.size() > 0)
