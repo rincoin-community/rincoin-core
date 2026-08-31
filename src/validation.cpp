@@ -2296,8 +2296,25 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     // in multiple threads). Preallocate the vector size so a new allocation
     // doesn't invalidate pointers into the vector, and keep txsdata in scope
     // for as long as `control`.
-    CCheckQueueControl<CScriptCheck> control(fScriptChecks && g_parallel_script_checks ? &scriptcheckqueue : nullptr);
+    //
+    // consensus/s1-testing: txsdata is declared *before* control, not after
+    // as an earlier version of this code had it -- C++ destroys locals in
+    // reverse declaration order, so declaring txsdata after control meant
+    // txsdata (holding the data CScriptCheck worker threads read via
+    // PrecomputedTransactionData pointers) was destroyed *before* control's
+    // destructor (which waits for those same worker threads via Wait(), see
+    // CCheckQueueControl::~CCheckQueueControl in checkqueue.h) on any early
+    // return from this function after control.Add() below but before the
+    // explicit control.Wait() further down -- e.g. a transaction failing
+    // validation partway through the loop. A real, reproducible
+    // heap-use-after-free (a worker thread's SignatureHash() reading an
+    // already-freed txsdata element), caught by AddressSanitizer in
+    // txvalidationcache_tests.cpp, not found by inspection -- the comment
+    // above already documented the *requirement* ("keep txsdata in scope
+    // for as long as control") without the declaration order actually
+    // satisfying it.
     std::vector<PrecomputedTransactionData> txsdata(block.vtx.size());
+    CCheckQueueControl<CScriptCheck> control(fScriptChecks && g_parallel_script_checks ? &scriptcheckqueue : nullptr);
 
     // consensus/s1-testing: height-840,000 sig_fork_id activation. Applies
     // to every non-coinbase input's sighash (coinbase transactions are
