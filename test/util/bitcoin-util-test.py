@@ -21,6 +21,20 @@ import subprocess
 import sys
 
 def main():
+    # consensus/s1-testing: this build's rincoin-tx refuses to *sign*
+    # mainnet-looking transactions unless RINCOIN_TESTING_ALLOW_MAINNET=1 is
+    # set (see MutateTxSign() in bitcoin-tx.cpp) -- a deliberate guard
+    # against accidentally producing a real-looking signed mainnet
+    # transaction from an ordinary invocation. This harness's own test
+    # cases exercise that signing path purely offline (no network, no real
+    # mainnet interaction), on the default chain like every other
+    # pre-existing case here, so it explicitly opts in for its own child
+    # processes -- the same pattern test_framework/fork_scenario.py already
+    # uses for other testing-only behavior. setdefault(), not an
+    # unconditional override, so an operator's own environment setting
+    # (e.g. deliberately testing the guard itself fires) isn't clobbered.
+    os.environ.setdefault("RINCOIN_TESTING_ALLOW_MAINNET", "1")
+
     config = configparser.ConfigParser()
     config.optionxform = str
     config.read_file(open(os.path.join(os.path.dirname(__file__), "../config.ini"), encoding="utf8"))
