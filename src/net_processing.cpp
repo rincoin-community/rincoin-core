@@ -1148,7 +1148,10 @@ bool PeerManager::MaybePunishNodeForBlock(NodeId nodeid, const BlockValidationSt
         // header, however, so accepting bad MWEB bodies from compact-block
         // peers without penalty permits their expensive validation to be
         // replayed indefinitely.
-        if (!via_compact_block || state.GetRejectReason() == "bad-blk-mweb") {
+        if (!via_compact_block ||
+            state.GetRejectReason() == "bad-blk-mweb" ||
+            state.GetRejectReason() == "bad-mweb-empty-pegout" ||
+            state.GetRejectReason() == "bad-mweb-empty-extradata") {
             Misbehaving(nodeid, 100, message);
             return true;
         }
