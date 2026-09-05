@@ -311,6 +311,21 @@ NON_SCRIPTS = [
     "combine_logs.py",
     "create_cache.py",
     "test_runner.py",
+    # Rincoin: fork_report.py is this directory's other test-runner helper (drives
+    # the six feature_fork_*.py scripts below), not a test script itself.
+    "fork_report.py",
+    # Rincoin: these run via test/functional/fork_report.py in CI's separate
+    # fork-scenario-tests job (see .github/workflows/ci.yml), not via this
+    # test_runner.py -- listing them here is what check_script_list() above
+    # requires to not treat them as accidentally-omitted tests. Omitting this
+    # made test_runner.py --ci (used by the unit+functional CI job) hard-fail
+    # via sys.exit(1) the moment these files existed, before running any test.
+    "feature_fork_commitment.py",
+    "feature_fork_reorg.py",
+    "feature_fork_sig_fork_id.py",
+    "feature_fork_subsidy.py",
+    "feature_fork_vs_aevust.py",
+    "feature_fork_vs_legacy.py",
 ]
 
 def main():
