@@ -111,6 +111,10 @@ bool CBlockIndexWorkComparator::operator()(const CBlockIndex *pa, const CBlockIn
 
 ChainstateManager g_chainman;
 
+// Serialize block storage and activation so concurrent same-hash bodies
+// cannot connect one representation while retaining another on disk.
+static Mutex g_process_new_block_mutex;
+
 CChainState& ChainstateActive()
 {
     LOCK(::cs_main);
@@ -2769,6 +2773,14 @@ bool CChainState::ConnectTip(BlockValidationState& state, const CChainParams& ch
     LogPrint(BCLog::BENCH, "  - Connect postprocess: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime5) * MILLI, nTimePostConnect * MICRO, nTimePostConnect * MILLI / nBlocksTotal);
     LogPrint(BCLog::BENCH, "- Connect block: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime1) * MILLI, nTimeTotal * MICRO, nTimeTotal * MILLI / nBlocksTotal);
 
+    // The MWEB body is not committed by the block hash and is only fully
+    // checked while connecting it to the MWEB UTXO set. AcceptBlock therefore
+    // defers this signal for MWEB blocks until the exact body has connected.
+    // Signal before moving pthisBlock into the connection trace.
+    if (!IsInitialBlockDownload() && !blockConnecting.mweb_block.IsNull()) {
+        GetMainSignals().NewPoWValidBlock(pindexNew, pthisBlock);
+    }
+
     connectTrace.BlockConnected(pindexNew, std::move(pthisBlock));
     return true;
 }
@@ -4272,8 +4284,10 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
     }
 
     // Header is valid/has work, merkle tree and segwit merkle tree are good...RELAY NOW
-    // (but if it does not build on our best tip, let the SendMessages loop relay it)
-    if (!IsInitialBlockDownload() && m_chain.Tip() == pindex->pprev)
+    // (but if it does not build on our best tip, let the SendMessages loop relay it).
+    // MWEB blocks are deferred to ConnectTip because their bodies are not
+    // committed by the block hash and require UTXO-dependent validation.
+    if (!IsInitialBlockDownload() && m_chain.Tip() == pindex->pprev && block.mweb_block.IsNull())
         GetMainSignals().NewPoWValidBlock(pindex, pblock);
 
     // Write block to history file
@@ -4299,6 +4313,7 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
 bool ChainstateManager::ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, bool fForceProcessing, bool* fNewBlock)
 {
     AssertLockNotHeld(cs_main);
+    LOCK(g_process_new_block_mutex);
 
     {
         CBlockIndex *pindex = nullptr;
