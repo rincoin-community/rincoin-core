@@ -124,6 +124,10 @@ releases
 .build-cache/
 release-builds/
 
+# CI harness scratch dir (ccache, test datadirs, sanitizer output, test_runner
+# temp dirs -- see BASE_SCRATCH_DIR in ci/test/00_setup_env.sh)
+ci/scratch/
+
 #lcov
 *.gcno
 *.gcda
