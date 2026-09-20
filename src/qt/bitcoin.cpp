@@ -544,6 +544,10 @@ int GuiMain(int argc, char* argv[])
         QMessageBox::critical(nullptr, PACKAGE_NAME, QObject::tr("Error: %1").arg(e.what()));
         return EXIT_FAILURE;
     }
+    if (!CheckMainnetTestingGuard()) {
+        QMessageBox::critical(nullptr, PACKAGE_NAME, QObject::tr("This is a consensus-testing build and refuses to run on mainnet unless RINCOIN_TESTING_ALLOW_MAINNET=1 is set in the process environment."));
+        return EXIT_FAILURE;
+    }
 #ifdef ENABLE_WALLET
     // Parse URIs on command line -- this can affect Params()
     PaymentServer::ipcParseCommandLine(argc, argv);

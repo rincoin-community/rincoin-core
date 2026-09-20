@@ -84,6 +84,10 @@ static bool AppInit(int argc, char* argv[])
             return InitError(Untranslated(strprintf("%s\n", e.what())));
         }
 
+        if (!CheckMainnetTestingGuard()) {
+            return false;
+        }
+
         // Error out when loose non-argument tokens are encountered on command line
         for (int i = 1; i < argc; i++) {
             if (!IsSwitchChar(argv[i][0])) {

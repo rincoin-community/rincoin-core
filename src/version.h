@@ -9,11 +9,14 @@
  * network protocol versioning
  */
 
-// Current protocol version. A per-network peer-protocol-version floor schedule
-// (Consensus::Params::vMinPeerProtoVersionFloors, configured in chainparams.cpp)
-// uses this value to fence off older nodes once the active chain reaches a
-// configured floor height.
-static const int PROTOCOL_VERSION = 70018;
+// Current protocol version. 70019 identifies the Rincoin Community Core 1.2.0
+// line; the increase is diagnostic only (no wire-format change, no service bit)
+// and does not by itself separate anything. A per-network peer-protocol-version
+// floor schedule (Consensus::Params::vMinPeerProtoVersionFloors, configured in
+// chainparams.cpp) disconnects peers below the scheduled minimum (70018 from the
+// height-840,000 transition) once the active chain reaches that height; it is a
+// networking policy and does not affect block validity.
+static const int PROTOCOL_VERSION = 70019;
 
 //! initial proto version, to be increased after version/verack negotiation
 static const int INIT_PROTO_VERSION = 209;
