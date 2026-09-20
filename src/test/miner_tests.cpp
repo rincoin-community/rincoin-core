@@ -369,8 +369,8 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
 
     // subsidy changing
     int nHeight = ::ChainActive().Height();
-    // regtest nSubsidyHalvingInterval=150, test around 2nd halving (300)
-    while (::ChainActive().Tip()->nHeight < 299) {
+    // regtest nSubsidyHalvingInterval=210, test around 2nd halving (420)
+    while (::ChainActive().Tip()->nHeight < 419) {
         CBlockIndex* prev = ::ChainActive().Tip();
         CBlockIndex* next = new CBlockIndex();
         next->phashBlock = new uint256(InsecureRand256());
@@ -382,7 +382,7 @@ BOOST_AUTO_TEST_CASE(CreateNewBlock_validity)
     }
     BOOST_CHECK(pblocktemplate = AssemblerForTest(chainparams).CreateNewBlock(scriptPubKey));
     // Extend to the 2nd halving height.
-    while (::ChainActive().Tip()->nHeight < 300) {
+    while (::ChainActive().Tip()->nHeight < 420) {
         CBlockIndex* prev = ::ChainActive().Tip();
         CBlockIndex* next = new CBlockIndex();
         next->phashBlock = new uint256(InsecureRand256());

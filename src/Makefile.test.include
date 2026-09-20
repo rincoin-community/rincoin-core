@@ -177,6 +177,7 @@ JSON_TEST_FILES = \
   test/data/key_io_valid.json \
   test/data/key_io_invalid.json \
   test/data/script_tests.json \
+  test/data/s6b_sighash.json \
   test/data/sighash.json \
   test/data/tx_invalid.json \
   test/data/tx_valid.json
@@ -263,6 +264,9 @@ BITCOIN_TESTS =\
   test/ref_tests.cpp \
   test/reverselock_tests.cpp \
   test/rpc_tests.cpp \
+  test/s6b_sighash_tests.cpp \
+  test/s6b_sign_tests.cpp \
+  test/s6b_subsidy_tests.cpp \
   test/sanity_tests.cpp \
   test/scheduler_tests.cpp \
   test/script_p2sh_tests.cpp \
