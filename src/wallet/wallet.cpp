@@ -3183,6 +3183,28 @@ bool CWallet::CreateTransaction(
         FeeCalculation& fee_calc_out,
         bool sign)
 {
+    // Refuse to pay to witness version 1 (Taproot) or a later witness version while
+    // the chain does not enforce Taproot yet: until the deployment is active such an
+    // output is anyone-can-spend at the consensus level, and the address decoder
+    // accepts genuine bech32m addresses, so this is reachable from sendtoaddress and
+    // not only from the raw transaction APIs. Once Taproot is active the upstream
+    // behavior applies again.
+    if (!chain().isTaprootActive()) {
+        for (const CRecipient& recipient : vecSend) {
+            // MWEB recipients carry no script.
+            if (recipient.IsMWEB()) continue;
+
+            std::vector<std::vector<unsigned char>> solutions;
+            const TxoutType type = Solver(recipient.receiver.GetScript(), solutions);
+            if (type == TxoutType::WITNESS_V1_TAPROOT || type == TxoutType::WITNESS_UNKNOWN) {
+                error = _("Cannot create an output paying to witness version 1 or later: "
+                          "Taproot is not active on this chain yet, so such an output "
+                          "could be spent by anyone.");
+                return false;
+            }
+        }
+    }
+
     int nChangePosIn = nChangePosInOut;
 
     Optional<AssembledTx> tx1 = TxAssembler(*this).AssembleTx(vecSend, coin_control, nChangePosIn, sign, error);
