@@ -290,6 +290,8 @@ BOOST_AUTO_TEST_CASE(versionbits_sanity)
 
         // Check start height is on a retarget boundary
         BOOST_CHECK_EQUAL(mainnetParams.vDeployments[i].nStartHeight % mainnetParams.nMinerConfirmationWindow, 0U);
+        // ... and so is the timeout height
+        BOOST_CHECK_EQUAL(mainnetParams.vDeployments[i].nTimeoutHeight % mainnetParams.nMinerConfirmationWindow, 0U);
         // Check start_height is 0 for ALWAYS_ACTIVE and never active deployments
         if (mainnetParams.vDeployments[i].nStartTime == Consensus::BIP9Deployment::ALWAYS_ACTIVE || mainnetParams.vDeployments[i].nStartTime == Consensus::BIP9Deployment::NEVER_ACTIVE) {
             BOOST_CHECK_EQUAL(mainnetParams.vDeployments[i].nStartHeight, 0);
@@ -327,11 +329,15 @@ static void check_computeblockversion_bip8(const Consensus::Params& params, Cons
     // should not be any signalling for first block
     BOOST_CHECK_EQUAL(ComputeBlockVersion(nullptr, params), VERSIONBITS_TOP_BITS);
 
+    // Start and timeout heights are multiples of the confirmation window on every network: the
+    // test networks scale the mainnet heights and round them down to a window boundary
+    // (SetScaledDeploymentHeights() in chainparams.cpp), with at least one window between them.
     BOOST_CHECK(nStartHeight >= 0);
     BOOST_CHECK_EQUAL(nStartHeight % nMinerConfirmationWindow, 0U);
 
     BOOST_CHECK(nTimeoutHeight <= std::numeric_limits<uint32_t>::max());
     BOOST_CHECK_EQUAL(nTimeoutHeight % nMinerConfirmationWindow, 0U);
+    BOOST_CHECK(nStartHeight < nTimeoutHeight);
 
     BOOST_CHECK(0 <= bit && bit < 32);
     BOOST_CHECK((bit_mask & VERSIONBITS_TOP_MASK) == 0);
@@ -553,7 +559,7 @@ BOOST_AUTO_TEST_CASE(versionbits_computeblockversion)
 {
     // check that any deployment on any chain can conceivably reach both
     // ACTIVE and FAILED states in roughly the way we expect
-    for (const auto& chain_name : { CBaseChainParams::MAIN, CBaseChainParams::TESTNET, CBaseChainParams::REGTEST}) {
+    for (const auto& chain_name : { CBaseChainParams::MAIN, CBaseChainParams::TESTNET, CBaseChainParams::REGTEST, CBaseChainParams::PREVIEW}) {
         const auto chainParams = CreateChainParams(*m_node.args, chain_name);
         for (int i = 0; i < (int)Consensus::MAX_VERSION_BITS_DEPLOYMENTS; ++i) {
             check_computeblockversion(chainParams->GetConsensus(), static_cast<Consensus::DeploymentPos>(i));
