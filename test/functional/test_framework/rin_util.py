@@ -6,12 +6,22 @@
 
 import os
 
+from test_framework.address import ADDRESS_BCRT1_UNSPENDABLE
 from test_framework.messages import COIN, COutPoint, CTransaction, CTxIn, CTxOut, FromHex, MWEBHeader
 from test_framework.util import get_datadir_path, initialize_datadir, satoshi_round
 from test_framework.script_util import DUMMY_P2WPKH_SCRIPT, hogaddr_script
 from test_framework.test_node import TestNode
 
-FIRST_MWEB_HEIGHT = 432 # Height of the first block to contain an MWEB if using default regtest params
+# Height of the first block to contain an MWEB with the default regtest params: the
+# deployment is height-based like mainnet's, scaled from it and aligned to the 144-block
+# window: STARTED at 2,160, LOCKED_IN at 2,304 and ACTIVE at 2,448.
+FIRST_MWEB_HEIGHT = 2448
+
+# Number of early blocks that the MWEB setup helpers mine to the node's own wallet. The rest
+# of the pre-MWEB chain pays an unspendable address, so the wallet ends up with a few hundred
+# mature coinbase outputs of the early, large subsidies instead of a few thousand outputs that
+# no longer fit into one standard transaction.
+MWEB_SETUP_WALLET_BLOCKS = 431
 
 
 """Create a txout with a given amount and scriptPubKey
@@ -67,9 +77,28 @@ then mines the first MWEB block which includes that pegin.
 
 mining_node - The node to use to generate blocks
 """
+def generate_filler_blocks(mining_node, count, batch=500):
+    """Mine `count` blocks that pay an unspendable address, in batches that stay well
+    within the RPC timeout."""
+    while count > 0:
+        n = min(count, batch)
+        mining_node.generatetoaddress(n, ADDRESS_BCRT1_UNSPENDABLE)
+        count -= n
+
+
+def generate_premweb_blocks(mining_node, target_height):
+    """Mine from an empty chain up to `target_height` (below FIRST_MWEB_HEIGHT): the first
+    MWEB_SETUP_WALLET_BLOCKS blocks pay the node's wallet, the remainder is filler."""
+    assert mining_node.getblockcount() == 0
+    assert MWEB_SETUP_WALLET_BLOCKS <= target_height < FIRST_MWEB_HEIGHT
+    mining_node.generate(MWEB_SETUP_WALLET_BLOCKS)
+    generate_filler_blocks(mining_node, target_height - MWEB_SETUP_WALLET_BLOCKS)
+    assert mining_node.getblockcount() == target_height
+
+
 def setup_mweb_chain(mining_node):
     # Create all pre-MWEB blocks
-    mining_node.generate(FIRST_MWEB_HEIGHT - 1)
+    generate_premweb_blocks(mining_node, FIRST_MWEB_HEIGHT - 1)
 
     # Pegin some coins
     mining_node.sendtoaddress(mining_node.getnewaddress(address_type='mweb'), 1)

@@ -36,7 +36,10 @@ class MWEBReorgTest(BitcoinTestFramework):
     def basic_reorg_test(self):
         self.log.info("Create all pre-MWEB blocks")
         setup_mweb_chain(self.nodes[0])
-        
+        # Let the other nodes catch up first: a node that is still below the MWEB activation height rejects
+        # the peg-in (mweb-before-activation) and does not ask for it again.
+        self.sync_blocks()
+
         self.log.info("Pegin some coins in pegin_tx1. pegin_tx1 should be in the mempool")
         node0_mweb_addr = self.nodes[0].getnewaddress(address_type='mweb')
         pegin_tx1_id = self.nodes[0].sendtoaddress(node0_mweb_addr, 100)

@@ -25,9 +25,11 @@ import subprocess
 from test_framework.blocktools import (
     create_block,
     create_coinbase,
+    regtest_block_subsidy,
     TIME_GENESIS_BLOCK,
 )
 from test_framework.messages import (
+    COIN,
     CBlockHeader,
     FromHex,
     msg_block,
@@ -220,7 +222,8 @@ class BlockchainTest(BitcoinTestFramework):
         node = self.nodes[0]
         res = node.gettxoutsetinfo()
 
-        assert_equal(res['total_amount'], Decimal('8725.00000000'))
+        # 200 blocks of the cached chain; the regtest halving interval is 210
+        assert_equal(res['total_amount'], Decimal(sum(regtest_block_subsidy(h) for h in range(1, 201))) / COIN)
         assert_equal(res['transactions'], 200)
         assert_equal(res['height'], 200)
         assert_equal(res['txouts'], 200)
