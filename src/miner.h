@@ -214,6 +214,17 @@ private:
 
 /** Modify the extranonce in a block */
 void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
+
+/**
+ * Voluntary identification of blocks built from Rincoin Community Core templates:
+ * a script fragment (one push of the ASCII tag "/RCC/") that getblocktemplate
+ * reports as coinbaseaux.flags (BIP22) and that the internal miner places in the
+ * coinbase scriptSig after the BIP34 height and the extra nonce. It names the
+ * development line, not the version. It is not a consensus rule: blocks without
+ * it, with another tag or with a copied tag are equally valid, and it proves
+ * nothing about the software or operator that produced a block.
+ */
+extern const CScript COINBASE_FLAGS;
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev);
 
 /** Update an old GenerateCoinbaseCommitment from CreateNewBlock after the block txs have changed */

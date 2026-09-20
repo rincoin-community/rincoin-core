@@ -30,6 +30,15 @@ static size_t GetMWEBInputCount(const CTransaction& tx)
     return tx.HasMWEBTx() ? tx.mweb_tx.m_transaction->GetInputs().size() : 0;
 }
 
+const CScript COINBASE_FLAGS = CScript() << std::vector<unsigned char>{'/', 'R', 'C', 'C', '/'};
+
+/** Append COINBASE_FLAGS to a coinbase scriptSig that already holds the height and extra nonce. */
+static CScript WithCoinbaseFlags(CScript script)
+{
+    script.insert(script.end(), COINBASE_FLAGS.begin(), COINBASE_FLAGS.end());
+    return script;
+}
+
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
     int64_t nOldTime = pblock->nTime;
@@ -181,7 +190,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
-    coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+    coinbaseTx.vin[0].scriptSig = WithCoinbaseFlags(CScript() << nHeight << OP_0);
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
     pblocktemplate->vTxFees[0] = -nFees;
@@ -550,7 +559,7 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
     ++nExtraNonce;
     unsigned int nHeight = pindexPrev->nHeight+1; // Height first in coinbase required for block.version=2
     CMutableTransaction txCoinbase(*pblock->vtx[0]);
-    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce));
+    txCoinbase.vin[0].scriptSig = WithCoinbaseFlags(CScript() << nHeight << CScriptNum(nExtraNonce));
     assert(txCoinbase.vin[0].scriptSig.size() <= 100);
 
     pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));
