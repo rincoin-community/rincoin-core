@@ -48,9 +48,9 @@ The existence of a branch does not imply that its work has been accepted, schedu
 
 ### Consensus at height 840,000
 
-A public review of the consensus decision at block height **840,000** is in progress. Analysis, candidate specifications, supporting material, and discussion are maintained separately in the [`consensus-840k`](https://github.com/rincoin-community/consensus-840k) repository.
+The analysis, the specification, supporting material, and discussion of the consensus change at block height **840,000** are maintained separately in the [`consensus-840k`](https://github.com/rincoin-community/consensus-840k) repository. Rincoin Community Core implements the transition specified there in its 1.2.0 line.
 
-Consensus-sensitive changes should follow that process in addition to the normal development and review workflow, and are developed on their own branch until the decision is made.
+Consensus-sensitive changes follow that process in addition to the normal development and review workflow: they are developed on their own `consensus/<codename>` branch, reach `dev` through review, and are production software only once they are part of a published release.
 
 ## Summary
 

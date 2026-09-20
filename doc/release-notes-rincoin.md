@@ -18,10 +18,148 @@ corresponds to the Litecoin `v0.21.4` base.
 
 ---
 
-## Unreleased — current development
+## 1.2.0 — in development (`v1.2.0-dev.2`)
 
-No consensus rules change in this line; it is maintenance and infrastructure
-work only. Highlights so far:
+> **Status: development build, not a release.** `v1.2.0-dev.2` is the label of the
+> current development build of the 1.2.0 line. It exists so that the consensus change
+> below can be reviewed and tested. It is not tagged, there are no release binaries,
+> and it must not be used on mainnet: a pre-release build refuses to start on
+> mainnet unless `RINCOIN_TESTING_ALLOW_MAINNET=1` is set in the environment, and
+> it announces itself as `/RincoinCommunityCore:1.2.0(dev.2)/`. The stable 1.2.0
+> release will carry neither the guard nor the label. (`dev.2` replaces the
+> unpublished `dev.1`: transaction replay protection now has the `SIGHASH_FORKID`
+> form described below.)
+
+### Consensus change at block height 840,000
+
+This line implements the height-840,000 transition specified in the
+[consensus-840k repository](https://github.com/rincoin-community/consensus-840k)
+(`technology/consensus-transition.md` and the S6/b specification). Blocks below
+height 840,000 are validated exactly as before.
+
+- **Subsidy schedule (S6/b).** From height 840,000 the block subsidy is 4 RIN, from
+  2,100,000 it is 2 RIN, from 4,200,000 it is 1 RIN, from 6,300,000 it is 0.6 RIN,
+  and from 234,587,500 it is zero. Total issuance is exactly 168,000,000 RIN, which
+  is `MAX_MONEY`. The schedule is a list of `{height, subsidy}` phases in
+  `Consensus::Params` (`vS6bSubsidyPhases`), built by `SetS6bSchedule()` from the
+  network's halving interval.
+- **The block at height 840,000 claims exactly subsidy plus fees.** Its coinbase
+  outputs must sum to exactly 4 RIN plus the block's fees (`bad-cb-amount-transition`
+  otherwise). This is the only height with such a rule; at every other height a
+  coinbase may still claim less than it is entitled to. The rule makes this one
+  block invalid under the previous schedule whatever its fees are, and a block made
+  for the previous schedule invalid here, so the two rule sets separate at a defined
+  block. **Pools and solo miners:** claim the full `coinbasevalue` of
+  `getblocktemplate` at that height, as mining software normally does; a payout
+  scheme that leaves part of the reward unclaimed would lose that block.
+- **Replay protection in the signature hash (`SIGHASH_FORKID`, fork ID 840).** From
+  height 840,000 every ECDSA signature, in pre-SegWit and SegWit v0 inputs alike, is
+  a replay-protected one in the form that Bitcoin Cash introduced and Bitcoin Gold
+  uses on a SegWit chain. Its hash type must have `SIGHASH_FORKID` (`0x40`) set;
+  a signature without it makes script evaluation fail with `Signature must use
+  SIGHASH_FORKID` in `OP_CHECKSIG`, `OP_CHECKSIGVERIFY`, `OP_CHECKMULTISIG` and
+  `OP_CHECKMULTISIGVERIFY` (a hard failure, not a false result that a script could
+  invert; empty signatures are allowed as before). The signature hash is the BIP143
+  one, for pre-SegWit inputs too, so it commits to the amount of the input, and the
+  four-byte hash type that ends the preimage carries the fork ID 840 (`0x000348`) in
+  its upper three bytes. A `SIGHASH_ALL` signature therefore ends in `0x41` and its
+  preimage in `41 48 03 00`; software that takes the flag and the fork ID as one
+  number is configured with `0x00034840`. The rule is keyed to the height of the
+  block that confirms the transaction. Only the requirement to set the flag is a
+  consensus rule; the other signature-encoding checks stay policy. Taproot (BIP341)
+  signatures and MWEB are unchanged. A transaction signed for one side of the
+  transition is invalid on the other side, and on any chain that does not use the
+  same fork ID. The historical `SIGHASH_SINGLE` quirk (a pre-SegWit signature over
+  the constant digest `1` that fits any transaction) is out of reach from the
+  transition height on, because BIP143 has no such digest.
+- **Nothing in a block identifies the rule set.** There is no mandatory coinbase
+  commitment, no required block or transaction version, no new service bit and no
+  wire-format change.
+
+### Mempool, wallet and RPC behavior around the transition
+
+- The mempool applies the rule of the next block. A transaction signed for the other
+  side of the transition is refused with `old-style-sig-fork-id` or
+  `new-style-sig-fork-id` (classified as a recent consensus change, so the peer that
+  relayed it is not penalized).
+- When the last block below the transition height connects, transactions in the
+  mempool that are signed the historical way are removed together with their
+  descendants (and the other way round if a reorganization moves the tip back below
+  it). Transactions without ECDSA signatures stay.
+- The wallet, `signrawtransactionwithwallet`, `signrawtransactionwithkey`, the PSBT
+  RPCs and the GUI sign for the block after the current tip, and check signatures
+  made by other parties the same way, so multi-party signing
+  (`combinerawtransaction`, `combinepsbt` with `finalizepsbt`, `analyzepsbt`) works on
+  both sides of the transition. `rincoin-tx` has no chain state and takes
+  `-signheight=<n>`.
+- Decoded scripts name the new hash types (`[ALL|FORKID]` and so on). The
+  `sighashtype` arguments of the signing RPCs and `rincoin-tx` accept these names
+  from the transition height on, where the flag is added whether it is named or
+  not; naming it for a block below the transition height is an error.
+- From the transition height on, signing needs the amount of every spent output.
+  The wallet and the node know it for coins they can see; for outputs described by
+  the caller in `prevtxs` (`signrawtransactionwithkey`,
+  `signrawtransactionwithwallet`, `rincoin-tx`) the `amount` field is now required
+  for pre-SegWit outputs too (`Missing amount` otherwise).
+- **Operational consequences.** A transaction that is still unconfirmed when block
+  839,999 connects becomes invalid; abandon it (`abandontransaction`) and send it
+  again. The same holds for transactions that were signed in advance and kept for
+  later. External signers and other wallet software must produce the new signatures
+  before they can spend after the transition; software that already supports Bitcoin
+  Gold or Bitcoin Cash has the construction and needs the fork ID 840 and the height.
+
+### Voluntary coinbase tag
+
+`getblocktemplate` offers the tag `/RCC/` in `coinbaseaux.flags` (`052f5243432f`),
+and the internal miner puts it into the coinbase scriptSig after the height and the
+extra nonce. The tag only identifies the software that assembled a block. It is not
+a consensus rule, and blocks without it, or with any other marker, are valid.
+
+### Network protocol
+
+- `PROTOCOL_VERSION` is 70019. The peer protocol floor is unchanged: 70017 from
+  genesis, 70018 from height 840,000.
+- The user agent is `/RincoinCommunityCore:1.2.0/` (with `(dev.2)` in development
+  builds).
+
+### Test networks
+
+Mainnet parameters other than the ones above are unchanged. The test networks now
+scale the mainnet schedule with their halving interval (heights rounded down):
+testnet uses an interval of 2,100 (1/100, transition at 8,400), regtest and the
+preview network use 210 (1/1000, transition at 840). Deployment start and timeout
+heights scale the same way and are then rounded down to a multiple of the network's
+versionbits window, so that they fall on a period boundary as they do on mainnet (see
+[`doc/rincoin-parameters.md`](rincoin-parameters.md)). Testnet keeps its genesis
+block and message start; its earlier chain is not valid under the new parameters.
+The preview network has a new genesis block. Regtest keeps the upstream regtest
+conventions for the buried deployments, always-active Taproot and disabled
+difficulty adjustment, so the inherited test suite stays meaningful.
+
+### Synchronized with Litecoin Core 0.21.5.8
+
+All upstream changes up to Litecoin Core 0.21.5.8 that apply to Rincoin have been
+adopted (60 commits, each cherry-picked with a reference to its upstream commit).
+They are mostly MWEB hardening: data-corruption and durability fixes in the MMR
+files, stricter handling of mutated MWEB blocks, additional consensus and policy
+checks for peg-ins, peg-outs and kernels, mempool and relay fixes, and rate limits
+for light-client requests. Also included: the wallet directory fix for Boost 1.78
+and later, MWEB view keys in `dumpwallet`, a lost-transaction-index fix, and a
+32 MB limit for received P2P messages so that the largest valid MWEB block can be
+relayed. Litecoin's network-specific activation heights for the new MWEB rules are
+set to zero on Rincoin, where MWEB has never been active, so the rules apply from the
+first MWEB block; its list of frozen mainnet MWEB outputs is empty here for the same
+reason.
+
+### Other changes
+
+- The wallet refuses to pay to a witness version that the chain does not enforce
+  yet (such outputs would be spendable by anyone until then). Adapted from
+  Aevust/rincoin-sim (commits 4aba34a3d and dfe2f64ef).
+- `HEADERSYNC-PERF` log lines are printed only with `-debug=bench`. Adapted from
+  Rin-coin/rincoin (commit 2515fc659, by Aevust).
+
+### Maintenance carried over from the 1.1 line
 
 - **Reverted the v1.1.0-rc1 RinHash "activations table."** The JSON-driven,
   code-generated consensus table has been removed. RinHash Argon2d parameters
@@ -65,28 +203,12 @@ work only. Highlights so far:
     > upgrading. Mainnet WIF (`7…`, byte 188) is unaffected. There is no
     > canonical testnet/previewnet yet, so real-world impact is expected to be
     > nil.
-- **Taproot and MWEB now activate early on the test networks (testnet,
-  previewnet).** These deployments inherited Litecoin-scale activation heights
-  (~2.2M blocks) that, on Rincoin's faster chain, would not be reached on the
-  test networks for years — leaving both features effectively untestable there.
-  They now activate at low heights (testnet: after SegWit at 8064; previewnet:
-  after a lowered SegWit at 864), so the networks can exercise them end to end.
-  Previewnet additionally gets a shorter BIP9 window and lower BIP34/CSV/SegWit
-  heights so a fresh preview chain reaches every upgrade quickly.
-
-  > This is purely maintenance to make the test networks usable for validation.
-  > **Mainnet is not touched:** its Taproot/MWEB activation is already defined in
-  > the code and is unchanged by this. Activating early on the test networks does
-  > not advance, defer, or pre-empt the mainnet schedule in any way. Whether
-  > mainnet activation should ultimately be brought forward, deferred, or left at
-  > its already-defined height is a separate decision for the community, and that
-  > discussion is treated as such.
 - **Peer-protocol-version floor is now a height schedule.** The single
   height/version floor is replaced by a sorted list of `{height, min_version}`
   entries (`Consensus::Params::vMinPeerProtoVersionFloors`) so the floor can be
   raised at successive heights as the protocol is bumped over time. Current
-  schedule requires `70017` (MWEB-capable) from genesis and `70018` (RinHash) at
-  each network's existing floor height. This is networking policy only and does
+  schedule requires `70017` (MWEB-capable) from genesis and `70018` from each
+  network's transition height. This is networking policy only and does
   not affect block validity; effective behaviour is unchanged for the peers on
   the network today (which already advertise `70017`+).
 - **Block-download timeout floored at Litecoin's 150 s spacing.** The P2P
