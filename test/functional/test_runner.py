@@ -92,6 +92,7 @@ BASE_SCRIPTS = [
     'wallet_backup.py',
     'wallet_backup.py --descriptors',
     # vv Tests less than 5m vv
+    'feature_s6b_subsidy.py',
     'mining_getblocktemplate_longpoll.py',
     'feature_maxuploadtarget.py',
     'feature_block.py',
@@ -100,6 +101,7 @@ BASE_SCRIPTS = [
     'p2p_compactblocks.py',
     'feature_segwit.py --legacy-wallet',
     # vv Tests less than 2m vv
+    'wallet_s6b_signing.py',
     'wallet_basic.py',
     'wallet_basic.py --descriptors',
     'wallet_labels.py',
@@ -195,6 +197,10 @@ BASE_SCRIPTS = [
     'p2p_invalid_tx.py',
     'feature_assumevalid.py',
     'feature_min_peer_proto_floor.py',
+    'feature_s6b_sigforkid.py',
+    'feature_s6b_sighash_single.py',
+    'feature_s6b_reorg.py',
+    'feature_s6b_coinbase_flags.py',
     'example_test.py',
     'wallet_txn_doublespend.py',
     'wallet_txn_doublespend.py --descriptors',

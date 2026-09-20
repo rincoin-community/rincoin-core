@@ -14,6 +14,18 @@
 # race is fixed and the test hardened (mine past the floor before asserting).
 # Confirmed green on the plain build.
 feature_min_peer_proto_floor.py
+
+# Height-840,000 transition (840 on regtest): subsidy schedule and the transition
+# block's exact coinbase claim; the sig_fork_id signature hash in the mempool, in
+# blocks, at the boundary and across reorganizations; SIGHASH_SINGLE without a
+# matching output; wallet, raw-transaction and PSBT signing on both sides; the
+# voluntary coinbase tag; reorganizations around the transition height.
+feature_s6b_subsidy.py
+feature_s6b_sigforkid.py
+feature_s6b_sighash_single.py
+feature_s6b_coinbase_flags.py
+feature_s6b_reorg.py
+wallet_s6b_signing.py
 mining_basic.py
 feature_block.py
 feature_csv_activation.py
@@ -169,7 +181,7 @@ feature_taproot.py
 feature_fee_estimation.py
 
 # feature_pruning.py: exercises block-file pruning. Needs MWEB disabled on the
-# regtest chain (it grows the chain past MWEB's height-432 activation with
+# regtest chain (it grows the chain past MWEB's height-2,448 activation with
 # hand-built blocks that carry no MWEB extension); the test now sets
 # vbparams=mweb:<far-future> on every node. Validated end-to-end on the plain
 # build (~3 min, Tests successful).
