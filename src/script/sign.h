@@ -40,10 +40,23 @@ class MutableTransactionSignatureCreator : public BaseSignatureCreator {
     unsigned int nIn;
     int nHashType;
     CAmount amount;
+    // Rincoin 840k: carries the signature-hash regime (inactive by default, so
+    // byte-identical to the historical behavior unless a caller that knows the
+    // confirming height uses the second constructor below). Declared before
+    // `checker` so that it is constructed first: `checker` holds a pointer to this
+    // object, and members are initialized in declaration order.
+    PrecomputedTransactionData m_txdata;
     const MutableTransactionSignatureChecker checker;
 
 public:
     MutableTransactionSignatureCreator(const CMutableTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn = SIGHASH_ALL);
+    /** Rincoin 840k: with sig_fork_id_active the signatures are replay-protected
+     *  ones: SIGHASH_FORKID is added to the hash type and the fork ID goes into the
+     *  signature hash. Callers pass true when the transaction is expected to
+     *  confirm at or after Consensus::Params::nS6bHeight. */
+    MutableTransactionSignatureCreator(const CMutableTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn,
+                                        const SigForkId& sig_fork_id, bool sig_fork_id_active,
+                                        int nHashTypeIn = SIGHASH_ALL);
     const BaseSignatureChecker& Checker() const override { return checker; }
     bool CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& keyid, const CScript& scriptCode, SigVersion sigversion) const override;
 };
@@ -158,8 +171,14 @@ bool ProduceSignature(const SigningProvider& provider, const BaseSignatureCreato
 bool SignSignature(const SigningProvider &provider, const CScript& fromPubKey, CMutableTransaction& txTo, unsigned int nIn, const CAmount& amount, int nHashType);
 bool SignSignature(const SigningProvider &provider, const CTransaction& txFrom, CMutableTransaction& txTo, unsigned int nIn, int nHashType);
 
-/** Extract signature data from a transaction input, and insert it. */
-SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout);
+/** Extract signature data from a transaction input, and insert it.
+ *
+ * Rincoin 840k: signatures that are already present are only recognized when they
+ * verify, so the caller has to name the signature-hash regime they were made for
+ * (the one of the block that is expected to confirm the transaction). Omitted, the
+ * historical signature hash is used. */
+SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout,
+                                  const SigForkId* sig_fork_id = nullptr, bool sig_fork_id_active = false);
 void UpdateInput(CTxIn& input, const SignatureData& data);
 
 /* Check whether we know how to sign for an output like this, assuming we
@@ -171,7 +190,14 @@ bool IsSolvable(const SigningProvider& provider, const DestinationAddr& dest_add
 /** Check whether a scriptPubKey is known to be segwit. */
 bool IsSegWitOutput(const SigningProvider& provider, const CScript& script);
 
-/** Sign the CMutableTransaction */
-bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* provider, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors);
+/** Sign the CMutableTransaction.
+ *
+ * Rincoin 840k: sig_fork_id/sig_fork_id_active are optional. Omitted
+ * (nullptr/false), every input is signed with the historical signature hash. Pass
+ * them when the transaction is expected to confirm at or after
+ * Consensus::Params::nS6bHeight, so that replay-protected signatures are produced;
+ * the amount of every spent output has to be known then. */
+bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* provider, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                      const SigForkId* sig_fork_id = nullptr, bool sig_fork_id_active = false);
 
 #endif // BITCOIN_SCRIPT_SIGN_H

@@ -275,14 +275,18 @@ void ParsePrevouts(const UniValue& prevTxsUnival, FillableSigningProvider* keyst
     }
 }
 
-void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result)
+void SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, const UniValue& hashType, UniValue& result,
+                      const SigForkId* sig_fork_id, bool sig_fork_id_active)
 {
     int nHashType = ParseSighashString(hashType);
+    if ((nHashType & SIGHASH_FORKID) && !(sig_fork_id && sig_fork_id_active)) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "A FORKID signature hash type can only be used from the transition height on");
+    }
 
     // Script verification errors
     std::map<int, std::string> input_errors;
 
-    bool complete = SignTransaction(mtx, keystore, coins, nHashType, input_errors);
+    bool complete = SignTransaction(mtx, keystore, coins, nHashType, input_errors, sig_fork_id, sig_fork_id_active);
     SignTransactionResultToJSON(mtx, complete, coins, input_errors, result);
 }
 

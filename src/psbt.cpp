@@ -224,7 +224,8 @@ void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransactio
     psbt_out.FromSignatureData(sigdata);
 }
 
-bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, int sighash, SignatureData* out_sigdata, bool use_dummy)
+bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, int sighash, SignatureData* out_sigdata, bool use_dummy,
+                    const SigForkId* sig_fork_id, bool sig_fork_id_active)
 {
     PSBTInput& input = psbt.inputs.at(index);
     const CMutableTransaction& tx = *psbt.tx;
@@ -266,6 +267,9 @@ bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& 
     bool sig_complete;
     if (use_dummy) {
         sig_complete = ProduceSignature(provider, DUMMY_SIGNATURE_CREATOR, utxo.scriptPubKey, sigdata);
+    } else if (sig_fork_id) {
+        MutableTransactionSignatureCreator creator(&tx, index, utxo.nValue, *sig_fork_id, sig_fork_id_active, sighash);
+        sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata);
     } else {
         MutableTransactionSignatureCreator creator(&tx, index, utxo.nValue, sighash);
         sig_complete = ProduceSignature(provider, creator, utxo.scriptPubKey, sigdata);
@@ -292,7 +296,7 @@ bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& 
     return sig_complete;
 }
 
-bool FinalizePSBT(PartiallySignedTransaction& psbtx)
+bool FinalizePSBT(PartiallySignedTransaction& psbtx, const SigForkId* sig_fork_id, bool sig_fork_id_active)
 {
     // Finalize input signatures -- in case we have partial signatures that add up to a complete
     //   signature, but have not combined them yet (e.g. because the combiner that created this
@@ -300,17 +304,17 @@ bool FinalizePSBT(PartiallySignedTransaction& psbtx)
     //   script.
     bool complete = true;
     for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
-        complete &= SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, SIGHASH_ALL);
+        complete &= SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, SIGHASH_ALL, nullptr, false, sig_fork_id, sig_fork_id_active);
     }
 
     return complete;
 }
 
-bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransaction& result)
+bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransaction& result, const SigForkId* sig_fork_id, bool sig_fork_id_active)
 {
     // It's not safe to extract a PSBT that isn't finalized, and there's no easy way to check
     //   whether a PSBT is finalized without finalizing it, so we just do this.
-    if (!FinalizePSBT(psbtx)) {
+    if (!FinalizePSBT(psbtx, sig_fork_id, sig_fork_id_active)) {
         return false;
     }
 

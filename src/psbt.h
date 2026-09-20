@@ -569,8 +569,13 @@ std::string PSBTRoleName(PSBTRole role);
 /** Checks whether a PSBTInput is already signed. */
 bool PSBTInputSigned(const PSBTInput& input);
 
-/** Signs a PSBTInput, verifying that all provided data matches what is being signed. */
-bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, int sighash = SIGHASH_ALL, SignatureData* out_sigdata = nullptr, bool use_dummy = false);
+/** Signs a PSBTInput, verifying that all provided data matches what is being signed.
+ *
+ * Rincoin 840k: sig_fork_id/sig_fork_id_active optional -- omitted,
+ * signs exactly as before this branch. Pass them when the caller knows this
+ * PSBT is expected to confirm at or after Consensus::Params::nS6bHeight. */
+bool SignPSBTInput(const SigningProvider& provider, PartiallySignedTransaction& psbt, int index, int sighash = SIGHASH_ALL, SignatureData* out_sigdata = nullptr, bool use_dummy = false,
+                    const SigForkId* sig_fork_id = nullptr, bool sig_fork_id_active = false);
 
 /** Counts the unsigned inputs of a PSBT. */
 size_t CountPSBTUnsignedInputs(const PartiallySignedTransaction& psbt);
@@ -584,10 +589,13 @@ void UpdatePSBTOutput(const SigningProvider& provider, PartiallySignedTransactio
 /**
  * Finalizes a PSBT if possible, combining partial signatures.
  *
+ * Rincoin 840k: an input only counts as complete when its combined signatures verify,
+ * so the caller names the signature-hash regime they were made for (see SignPSBTInput).
+ *
  * @param[in,out] psbtx PartiallySignedTransaction to finalize
  * return True if the PSBT is now complete, false otherwise
  */
-bool FinalizePSBT(PartiallySignedTransaction& psbtx);
+bool FinalizePSBT(PartiallySignedTransaction& psbtx, const SigForkId* sig_fork_id = nullptr, bool sig_fork_id_active = false);
 
 /**
  * Finalizes a PSBT if possible, and extracts it to a CMutableTransaction if it could be finalized.
@@ -596,7 +604,7 @@ bool FinalizePSBT(PartiallySignedTransaction& psbtx);
  * @param[out] result CMutableTransaction representing the complete transaction, if successful
  * @return True if we successfully extracted the transaction, false otherwise
  */
-bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransaction& result);
+bool FinalizeAndExtractPSBT(PartiallySignedTransaction& psbtx, CMutableTransaction& result, const SigForkId* sig_fork_id = nullptr, bool sig_fork_id_active = false);
 
 /**
  * Combines PSBTs with the same underlying transaction, resulting in a single PSBT with all partial signatures from each input.
