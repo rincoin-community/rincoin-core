@@ -538,6 +538,7 @@ libbitcoin_consensus_a_SOURCES = \
   consensus/merkle.cpp \
   consensus/merkle.h \
   consensus/params.h \
+  consensus/sigforkid.h \
   consensus/tx_check.cpp \
   consensus/validation.h \
   hash.cpp \

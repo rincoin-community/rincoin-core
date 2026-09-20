@@ -6,6 +6,8 @@
 #ifndef BITCOIN_CONSENSUS_PARAMS_H
 #define BITCOIN_CONSENSUS_PARAMS_H
 
+#include <amount.h>
+#include <consensus/sigforkid.h>
 #include <uint256.h>
 #include <cstdint>
 #include <limits>
@@ -128,6 +130,40 @@ struct Params {
      * not affect block validity.
      */
     std::vector<std::pair<int, int>> vMinPeerProtoVersionFloors;
+
+    /**
+     * Height-840,000 transition (S6/b). From nS6bHeight onward:
+     *  - GetBlockSubsidy() follows vS6bSubsidyPhases instead of the historical
+     *    halving rule (src/validation.cpp);
+     *  - the block at exactly nS6bHeight must claim the full subsidy plus all
+     *    fees, no more and no less (ConnectBlock() in src/validation.cpp);
+     *  - every ECDSA signature (pre-SegWit and SegWit v0) must set SIGHASH_FORKID and
+     *    is hashed with the BIP143 algorithm with sigForkId in the hash type
+     *    (src/script/interpreter.cpp, src/consensus/sigforkid.h).
+     * Everything below nS6bHeight validates exactly as before. A network
+     * without the transition keeps the default (never).
+     *
+     * The mainnet height is 4 halving intervals (840,000). Test networks use the
+     * same multiples of their own interval; see SetS6bSchedule() in
+     * src/chainparams.cpp and doc/rincoin-parameters.md.
+     */
+    int nS6bHeight{std::numeric_limits<int>::max()};
+
+    /** Fork ID of the replay-protected signature hash that applies from nS6bHeight. */
+    SigForkId sigForkId{SIG_FORK_ID_840K};
+
+    /**
+     * One entry of the S6/b subsidy table: from nStartHeight (inclusive) until
+     * the next entry's nStartHeight (exclusive; forever for the last entry) the
+     * maximum block subsidy is nSubsidy. Entries are sorted ascending, the first
+     * one starts at nS6bHeight and the last one has nSubsidy == 0 (the terminal
+     * height derived from the issuance ceiling).
+     */
+    struct S6bSubsidyPhase {
+        int nStartHeight;
+        CAmount nSubsidy;
+    };
+    std::vector<S6bSubsidyPhase> vS6bSubsidyPhases;
 
     /** Protocol-version floor in effect at nHeight (0 if none). Entries must be
      *  sorted ascending by activation height. */

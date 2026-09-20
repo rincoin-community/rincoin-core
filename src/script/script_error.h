@@ -82,6 +82,9 @@ typedef enum ScriptError_t
     SCRIPT_ERR_OP_CODESEPARATOR,
     SCRIPT_ERR_SIG_FINDANDDELETE,
 
+    /* Rincoin 840k: replay-protected signature hash */
+    SCRIPT_ERR_MUST_USE_FORKID,
+
     SCRIPT_ERR_ERROR_COUNT
 } ScriptError;
 
