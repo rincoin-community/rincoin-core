@@ -168,14 +168,20 @@ static int ScaleMainnetHeight(int64_t mainnet_height, const Consensus::Params& c
  * as on mainnet. The timeout is kept at least one window after the start, so that every
  * deployment has a signalling period. consensus.nMinerConfirmationWindow has to be set first.
  */
+std::pair<int64_t, int64_t> AlignDeploymentHeights(int64_t start, int64_t timeout, int64_t window)
+{
+    assert(window > 0);
+    const int64_t aligned_start = start / window * window;
+    return {aligned_start, std::max<int64_t>(timeout / window * window, aligned_start + window)};
+}
+
 static void SetScaledDeploymentHeights(Consensus::Params& consensus, Consensus::DeploymentPos pos, int64_t mainnet_start, int64_t mainnet_timeout)
 {
     const int64_t window = consensus.nMinerConfirmationWindow;
     assert(window > 0);
-    const int64_t start = ScaleMainnetHeight(mainnet_start, consensus) / window * window;
-    const int64_t timeout = std::max<int64_t>(ScaleMainnetHeight(mainnet_timeout, consensus) / window * window, start + window);
-    consensus.vDeployments[pos].nStartHeight = start;
-    consensus.vDeployments[pos].nTimeoutHeight = timeout;
+    const auto aligned = AlignDeploymentHeights(ScaleMainnetHeight(mainnet_start, consensus), ScaleMainnetHeight(mainnet_timeout, consensus), window);
+    consensus.vDeployments[pos].nStartHeight = aligned.first;
+    consensus.vDeployments[pos].nTimeoutHeight = aligned.second;
 }
 
 /**
@@ -704,14 +710,15 @@ void CRegTestParams::UpdateActivationParametersFromArgs(const ArgsManager& args)
 
 
 /**
- * Preview network (publicly reachable fork-rehearsal chain).
+ * Preview network (publicly reachable rehearsal chain).
  *
- * Combines testnet's PoW characteristics (real mining,
- * fPowAllowMinDifficultyBlocks + DGW retarget at h=100) with regtest's fast
- * RinHash activation schedule (activation 0 at height 600), so operators can
- * rehearse activation-0 behaviour on a real PoW network in minutes.
- * Genesis block, vFixedSeeds and chainTxData are reused verbatim from
- * testnet so we do not have to ship a separate genesis / seed table.
+ * Real proof of work as on testnet (mainnet's powLimit and block spacing, DGW
+ * retargeting) with the compressed schedule of regtest: every scheduled height
+ * is the mainnet height divided by 1,000, and the versionbits window is the
+ * regtest one. It has its own genesis block, message start, ports and address
+ * prefixes. A rehearsal that needs a fresh chain gets a new genesis block in a
+ * new build: a fresh chain on the same genesis block would lose against any
+ * node that kept the earlier, longer one.
  */
 class CPreviewParams : public CChainParams {
 public:
@@ -730,14 +737,16 @@ public:
         consensus.BIP66Height = ScaleMainnetHeight(26500, consensus);
         consensus.CSVHeight = ScaleMainnetHeight(26500, consensus);
         consensus.SegwitHeight = ScaleMainnetHeight(26500, consensus);
-        consensus.MinBIP9WarningHeight = consensus.SegwitHeight + 432; // segwit activation height + miner confirmation window
+        consensus.MinBIP9WarningHeight = consensus.SegwitHeight + 144; // segwit activation height + miner confirmation window
         consensus.powLimit = uint256S("0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33h
         consensus.nPowTargetSpacing = 60;
+        // (Without effect here, as on testnet: the difficulty is the powLimit until DGW
+        // takes over, and DGW does not know the min-difficulty rule.)
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 324; // 75% of 432 (fast preview window)
-        consensus.nMinerConfirmationWindow = 432;       // short BIP9 window so upgrades rehearse quickly
+        consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
+        consensus.nMinerConfirmationWindow = 144; // as on regtest
         consensus.DGWHeight = ScaleMainnetHeight(30000, consensus); // 30
         // Height-840,000 transition at 4 intervals (840), like mainnet's 840,000.
         SetS6bSchedule(consensus);
@@ -751,22 +760,23 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
         // Taproot/MWEB — scaled from mainnet, so both come after the height-840,000
-        // transition as they do on mainnet; the fast preview window (432) keeps the
-        // signalling periods short.
-        // Both round down to the same window here (start 2,160); the timeout is the
-        // window after it (2,592), so both are ACTIVE at 3,024.
+        // transition as they do on mainnet. Both round down to the same windows here, as
+        // MWEB does on regtest: STARTED at 2,160, LOCKED_IN at 2,304, ACTIVE at 2,448.
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
-        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_TAPROOT, 2161152, 2370816); // 2,161 / 2,370 -> 2,160 / 2,592
+        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_TAPROOT, 2161152, 2370816); // 2,161 / 2,370 -> 2,160 / 2,304
         assert(consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight == 2160);
-        assert(consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight == 2592);
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight == 2304);
 
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].bit = 4;
-        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_MWEB, 2217600, 2427264); // 2,217 / 2,427 -> 2,160 / 2,592
+        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_MWEB, 2217600, 2427264); // 2,217 / 2,427 -> 2,160 / 2,304
         assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight == 2160);
-        assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight == 2592);
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight == 2304);
 
         consensus.nMinimumChainWork = uint256S("0x00");
         consensus.defaultAssumeValid = uint256S("0x00004282aaa888c5b7a1bb210464788510d3c5976a8cec49061a3eb49d04ff33"); // preview genesis
+
+        consensus.mweb_pegout_feature_activation_height = 0;
+        consensus.mweb_extradata_feature_activation_height = 0;
 
         pchMessageStart[0] = 0x72; // 'r'
         pchMessageStart[1] = 0x69; // 'i'

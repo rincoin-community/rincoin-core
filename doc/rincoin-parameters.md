@@ -183,7 +183,16 @@ depend on these. `-vbparams` can still move a deployment for a single test.
 ### Previewnet
 
 A publicly reachable rehearsal chain with its own genesis block and network
-identity. It is meant to be reset whenever a rehearsal needs a fresh chain.
+identity: real proof of work as on testnet, with the compressed schedule and the
+versionbits window of regtest. At the 60-second block spacing the transition height
+is about 14 hours from the genesis block. A rehearsal that needs a fresh chain gets
+a new genesis block in a new build, because a fresh chain on the same genesis block
+would lose against any node that kept the earlier, longer one.
+
+`fPowAllowMinDifficultyBlocks` is set on testnet and on the preview network but has
+no effect on either: the difficulty is the proof-of-work limit until DGW takes over,
+and DGW does not know the min-difficulty rule. Difficulty therefore behaves as on
+mainnet, including the slow recovery after a large miner leaves.
 
 | Parameter            | Value |
 | -------------------- | ----- |
@@ -198,9 +207,9 @@ identity. It is meant to be reset whenever a rehearsal needs a fresh chain.
 | Transition height    | `840`; phases from `2,100`, `4,200`, `6,300`; terminal height `234,587` |
 | BIP34/65/66, CSV, SegWit | `26` |
 | DGW from             | `30` |
-| Versionbits window / threshold | `432` / `324` |
-| Taproot              | start `2,160`, timeout `2,592` (scaled `2,161` / `2,370`, both in the same window, so the timeout is the window after the start); ACTIVE at `3,024` |
-| MWEB                 | start `2,160`, timeout `2,592` (scaled `2,217` / `2,427`, likewise); ACTIVE at `3,024` |
+| Versionbits window / threshold | `144` / `108` (as on regtest) |
+| Taproot              | start `2,160`, timeout `2,304` (scaled `2,161` / `2,370`); ACTIVE at `2,448` |
+| MWEB                 | start `2,160`, timeout `2,304` (scaled `2,217` / `2,427`); ACTIVE at `2,448` |
 
 ## 4. Internal IPv6 prefix (ADDRv1)
 

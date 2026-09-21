@@ -12,6 +12,7 @@
 #include <protocol.h>
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 struct SeedSpec6 {
@@ -116,6 +117,12 @@ protected:
     CCheckpointData checkpointData;
     ChainTxData chainTxData;
 };
+
+/**
+ * Start and timeout height of a version-bits deployment, rounded down to a multiple of
+ * the confirmation window, with the timeout at least one window after the start.
+ */
+std::pair<int64_t, int64_t> AlignDeploymentHeights(int64_t start, int64_t timeout, int64_t window);
 
 /**
  * Creates and returns a std::unique_ptr<CChainParams> of the chosen chain.

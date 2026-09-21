@@ -278,6 +278,28 @@ BOOST_AUTO_TEST_CASE(versionbits_test)
     }
 }
 
+BOOST_AUTO_TEST_CASE(versionbits_align_deployment_heights)
+{
+    using P = std::pair<int64_t, int64_t>;
+    // Already aligned (mainnet MWEB)
+    BOOST_CHECK(AlignDeploymentHeights(2217600, 2427264, 8064) == P(2217600, 2427264));
+    // Rounded down to different windows (regtest and preview MWEB)
+    BOOST_CHECK(AlignDeploymentHeights(2217, 2427, 144) == P(2160, 2304));
+    // Both in the same window: the timeout is the window after the start
+    BOOST_CHECK(AlignDeploymentHeights(2217, 2427, 432) == P(2160, 2592));
+    BOOST_CHECK(AlignDeploymentHeights(10, 20, 144) == P(0, 144));
+    // Preview and regtest share the MWEB heights
+    const auto preview = CreateChainParams(*m_node.args, CBaseChainParams::PREVIEW);
+    const auto regtest = CreateChainParams(*m_node.args, CBaseChainParams::REGTEST);
+    const auto& p = preview->GetConsensus(); const auto& r = regtest->GetConsensus();
+    BOOST_CHECK_EQUAL(p.nMinerConfirmationWindow, r.nMinerConfirmationWindow);
+    BOOST_CHECK_EQUAL(p.nRuleChangeActivationThreshold, r.nRuleChangeActivationThreshold);
+    BOOST_CHECK_EQUAL(p.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight, r.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight);
+    BOOST_CHECK_EQUAL(p.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight, r.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight);
+    BOOST_CHECK_EQUAL(p.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight, 2304);
+    BOOST_CHECK_EQUAL(p.MinBIP9WarningHeight, p.SegwitHeight + (int)p.nMinerConfirmationWindow);
+}
+
 BOOST_AUTO_TEST_CASE(versionbits_sanity)
 {
     // Sanity checks of version bit deployments

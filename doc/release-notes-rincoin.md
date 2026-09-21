@@ -132,7 +132,8 @@ heights scale the same way and are then rounded down to a multiple of the networ
 versionbits window, so that they fall on a period boundary as they do on mainnet (see
 [`doc/rincoin-parameters.md`](rincoin-parameters.md)). Testnet keeps its genesis
 block and message start; its earlier chain is not valid under the new parameters.
-The preview network has a new genesis block. Regtest keeps the upstream regtest
+The preview network has a new genesis block and the versionbits window of regtest
+(144 / 108), which gives it the same deployment heights as regtest. Regtest keeps the upstream regtest
 conventions for the buried deployments, always-active Taproot and disabled
 difficulty adjustment, so the inherited test suite stays meaningful.
 
