@@ -2,15 +2,11 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#include <test/data/blockfilters.json.h>
 #include <test/util/setup_common.h>
 
 #include <blockfilter.h>
-#include <core_io.h>
 #include <serialize.h>
 #include <streams.h>
-#include <univalue.h>
-#include <util/strencodings.h>
 
 #include <boost/test/unit_test.hpp>
 
@@ -123,15 +119,6 @@ BOOST_AUTO_TEST_CASE(blockfilter_basic_test)
     BOOST_CHECK_EQUAL(default_ctor_block_filter_1.GetFilterType(), default_ctor_block_filter_2.GetFilterType());
     BOOST_CHECK_EQUAL(default_ctor_block_filter_1.GetBlockHash(), default_ctor_block_filter_2.GetBlockHash());
     BOOST_CHECK(default_ctor_block_filter_1.GetEncodedFilter() == default_ctor_block_filter_2.GetEncodedFilter());
-}
-
-// NOTE: blockfilters_json_test is disabled because the BIP 158 test vectors
-// use Bitcoin mainnet blocks which are not compatible with Rincoin's block
-// serialization and hashing.  Regenerate with Rincoin blocks to re-enable.
-BOOST_AUTO_TEST_CASE(blockfilters_json_test)
-{
-    // Test intentionally skipped for Rincoin
-    BOOST_TEST_MESSAGE("blockfilters_json_test skipped: BIP 158 test vectors are Bitcoin-specific");
 }
 
 BOOST_AUTO_TEST_CASE(blockfilter_type_names)
