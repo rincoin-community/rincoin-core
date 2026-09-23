@@ -141,6 +141,8 @@ noted below.
 | Versionbits window / threshold | `8,064` / `6,048` |
 | Taproot (height-based)        | start `2,161,152`, timeout `2,370,816` |
 | MWEB (height-based)           | start `2,217,600`, timeout `2,427,264` |
+| Last checkpoint               | `744,278` |
+| Minimum chain work            | `0x00` (not set) |
 
 ### Testnet
 

@@ -122,6 +122,19 @@ a consensus rule, and blocks without it, or with any other marker, are valid.
 - The user agent is `/RincoinCommunityCore:1.2.0/` (with `(dev.2)` in development
   builds).
 
+### Checkpoints and block assembly
+
+Mainnet checkpoints now run to block `744,278`, 77 entries further than the `435,935` of
+the 1.1 line, generated with `contrib/devtools/generate_checkpoints.py`. `nMinimumChainWork`
+is still unset, so a node that starts from nothing has no work threshold below which it
+refuses a chain; that value belongs to the release that ships for mainnet.
+
+Block assembly now leaves out a mempool transaction signed for the other side of the
+transition height instead of failing on it. The mempool is emptied of such transactions
+when the tip crosses the height, so this is a second line of defence; without it a single
+entry left behind would make every block template fail its validity check and stop block
+production on that node until the entry expired.
+
 ### Test networks
 
 Mainnet parameters other than the ones above are unchanged. The test networks now
