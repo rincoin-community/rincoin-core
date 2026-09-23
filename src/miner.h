@@ -152,6 +152,9 @@ private:
     uint64_t nBlockMWEBInputs;
     CAmount nFees;
     CTxMemPool::setEntries inBlock;
+    // Rincoin 840k: mempool entries left over from the other side of the transition
+    // height, kept out of the template by ExcludeStaleSigForkTransactions().
+    CTxMemPool::setEntries m_stale_sig_fork;
 
     // Chain context for the block
     int nHeight;
@@ -188,6 +191,10 @@ private:
       * Increments nPackagesSelected / nDescendantsUpdated with corresponding
       * statistics from the package selection (for logging statistics). */
     void addPackageTxs(int& nPackagesSelected, int& nDescendantsUpdated) EXCLUSIVE_LOCKS_REQUIRED(m_mempool.cs);
+    /** Rincoin 840k: find mempool entries that joined under the previous signature regime
+      * and would make the template invalid. Second line of defence behind the mempool
+      * eviction in validation.cpp; normally it finds nothing and costs nothing. */
+    void ExcludeStaleSigForkTransactions() EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool.cs);
 
     // helper functions for addPackageTxs()
     /** Remove confirmed (inBlock) entries from given set */

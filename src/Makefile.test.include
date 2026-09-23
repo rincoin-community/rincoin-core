@@ -266,6 +266,7 @@ BITCOIN_TESTS =\
   test/s6b_sighash_tests.cpp \
   test/s6b_sign_tests.cpp \
   test/s6b_subsidy_tests.cpp \
+  test/s6b_miner_tests.cpp \
   test/s6b_transition_block_tests.cpp \
   test/sanity_tests.cpp \
   test/scheduler_tests.cpp \

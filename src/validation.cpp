@@ -384,6 +384,15 @@ static bool IsCurrentForFeeEstimation() EXCLUSIVE_LOCKS_REQUIRED(cs_main)
  *  regime of the new next block. */
 static bool g_sigfork_boundary_touched GUARDED_BY(cs_main) = false;
 
+bool CheckInputsForSigForkRegime(const CTransaction& tx, const CCoinsViewCache& view, const Consensus::Params& consensus, int nHeight)
+{
+    PrecomputedTransactionData txdata;
+    txdata.SetSigForkId(consensus.sigForkId, nHeight >= consensus.nS6bHeight);
+    TxValidationState state;
+    return CheckInputScripts(tx, state, view, STANDARD_SCRIPT_VERIFY_FLAGS, /* cacheSigStore */ false,
+                             /* cacheFullScriptStore */ false, txdata);
+}
+
 /**
  * Rincoin 840k: drop every mempool transaction whose scripts do not verify
  * under the signature-hash regime of the next block.
@@ -407,7 +416,7 @@ static void RemoveForSigForkBoundary(CTxMemPool& pool, CChainState& chainstate, 
     if (pool.size() == 0) return;
 
     const Consensus::Params& consensus = chainparams.GetConsensus();
-    const bool fActive = chainstate.m_chain.Height() + 1 >= consensus.nS6bHeight;
+    const int next_height = chainstate.m_chain.Height() + 1;
 
     CCoinsViewMemPool viewMemPool(&chainstate.CoinsTip(), pool);
     CCoinsViewCache view(&viewMemPool);
@@ -420,10 +429,7 @@ static void RemoveForSigForkBoundary(CTxMemPool& pool, CChainState& chainstate, 
         // UTXO set or created by another mempool transaction. Be defensive anyway:
         // a transaction with unavailable inputs is left to the regular reorg handling.
         if (!view.HaveInputs(tx)) continue;
-        PrecomputedTransactionData txdata;
-        txdata.SetSigForkId(consensus.sigForkId, fActive);
-        TxValidationState state;
-        if (!CheckInputScripts(tx, state, view, STANDARD_SCRIPT_VERIFY_FLAGS, /* cacheSigStore */ false, /* cacheFullScriptStore */ false, txdata)) {
+        if (!CheckInputsForSigForkRegime(tx, view, consensus, next_height)) {
             vRemove.push_back(entry.GetSharedTx());
         }
     }
