@@ -101,6 +101,8 @@ BASE_SCRIPTS = [
     'p2p_compactblocks.py',
     'feature_segwit.py --legacy-wallet',
     # vv Tests less than 2m vv
+    'p2p_s6b_relay.py',
+    'wallet_s6b_boundary.py',
     'wallet_s6b_signing.py',
     'wallet_basic.py',
     'wallet_basic.py --descriptors',

@@ -240,6 +240,46 @@ class S6bSigForkIdTest(BitcoinTestFramework):
         self.sync_blocks()
         assert_equal(node1.getbestblockhash(), block_hash)
 
+        self.check_foreign_version_marker()
+
+    def check_foreign_version_marker(self):
+        """A transaction version that another implementation of this height requires.
+
+        Rincoin Community Core places no rule on nVersion, so what decides such a
+        transaction here is its signature, as for any other. The version is above
+        MAX_STANDARD_VERSION, so the mempool turns it down as non-standard while a block
+        that carries it is valid. This pins today's behaviour; it is not a rule.
+        """
+        node = self.nodes[0]
+        self.log.info("A transaction carrying another implementation's version marker")
+        marker = 0x52494e33
+        out = TestOutput("p2pkh")
+        self.fund([out])
+
+        tx = self.spend(out, SIGHASH_ALL, fork_active=True)
+        tx.nVersion = marker
+        out.sign(tx, 0, SIGHASH_ALL, fork_active=True)  # nVersion is covered by the signature
+        tx.rehash()
+        assert_equal(node.decoderawtransaction(tx.serialize().hex())["version"], marker)
+
+        # Relay policy refuses it, consensus does not.
+        assert_equal(mempool_accepts(node, tx), (False, "version"))
+        assert_raises_rpc_error(-26, "version", node.sendrawtransaction, tx.serialize().hex())
+        assert_block_accepted(node, build_block(node, txs=[tx], fees=FEE))
+        assert tx.hash in node.getblock(node.getbestblockhash())["tx"]
+
+        # The same transaction signed for the other side of the height stays invalid: the
+        # version marker does nothing for it here.
+        other = TestOutput("p2pkh")
+        self.fund([other])
+        wrong = self.spend(other, SIGHASH_ALL, fork_active=False)
+        wrong.nVersion = marker
+        other.sign(wrong, 0, SIGHASH_ALL, fork_active=False)
+        wrong.rehash()
+        assert_equal(mempool_accepts(node, wrong), (False, "version"))
+        assert_block_rejected(node, build_block(node, txs=[wrong], fees=FEE),
+                              block_script_failure(True, other.is_witness))
+
 
 if __name__ == '__main__':
     S6bSigForkIdTest().main()
