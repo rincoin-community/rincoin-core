@@ -19,13 +19,17 @@ feature_min_peer_proto_floor.py
 # block's exact coinbase claim; the sig_fork_id signature hash in the mempool, in
 # blocks, at the boundary and across reorganizations; SIGHASH_SINGLE without a
 # matching output; wallet, raw-transaction and PSBT signing on both sides; the
-# voluntary coinbase tag; reorganizations around the transition height.
+# voluntary coinbase tag; reorganizations around the transition height; the
+# funding RPCs, bumpfee and PSBTs across the height; relaying a transaction
+# signed for the other side without punishing the peer.
 feature_s6b_subsidy.py
 feature_s6b_sigforkid.py
 feature_s6b_sighash_single.py
 feature_s6b_coinbase_flags.py
 feature_s6b_reorg.py
 wallet_s6b_signing.py
+wallet_s6b_boundary.py
+p2p_s6b_relay.py
 mining_basic.py
 feature_block.py
 feature_csv_activation.py
