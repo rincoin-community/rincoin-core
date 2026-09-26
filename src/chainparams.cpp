@@ -229,10 +229,18 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight = 2161152; // End November 2021
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight = 2370816; // 364 days later
 
-        // Deployment of MWEB (LIP-0002, LIP-0003, and LIP-0004)
+        // Deployment of MWEB (LIP-0002, LIP-0003, and LIP-0004): not activated on mainnet, in
+        // line with other implementations of this chain. The deployment heights inherited from
+        // Litecoin would have activated it at the timeout height even without signalling.
+        // In 2026 Litecoin had to fix a consensus flaw in its MWEB validation that allowed the
+        // MWEB balance to be broken on its mainnet (Litecoin Core 0.21.5.4 to 0.21.5.6, all of
+        // it included here); activation is left to a later release that decides it deliberately. MWEB
+        // transactions stay non-standard and MWEB data in a block stays invalid, as they are
+        // before any activation. The test networks keep their scaled heights so that MWEB
+        // remains testable there.
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].bit = 4;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight = 2217600; // End Feb 2022
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight = 2427264; // 364 days later
+        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
         consensus.nMinimumChainWork = uint256S("0x00");
         consensus.defaultAssumeValid = uint256S("0x000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");

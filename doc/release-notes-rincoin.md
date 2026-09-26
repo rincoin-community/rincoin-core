@@ -72,6 +72,14 @@ height 840,000 are validated exactly as before.
   same fork ID. The historical `SIGHASH_SINGLE` quirk (a pre-SegWit signature over
   the constant digest `1` that fits any transaction) is out of reach from the
   transition height on, because BIP143 has no such digest.
+- **MWEB is not activated on mainnet.** The deployment inherited from Litecoin would
+  have activated MWEB by height at 2,427,264 even without signalling. In line with
+  other implementations of this chain it is now set to never activate on mainnet:
+  MWEB transactions stay non-standard and MWEB data in a block stays invalid, as they
+  are today. In 2026 Litecoin had to fix a consensus flaw in its MWEB validation that
+  allowed the MWEB balance to be broken on its mainnet (0.21.5.4 to 0.21.5.6, all
+  included in this release); activating MWEB on Rincoin is left to a later release.
+  Testnet, the preview network and regtest keep their MWEB deployment.
 - **Nothing in a block identifies the rule set.** There is no mandatory coinbase
   commitment, no required block or transaction version, no new service bit and no
   wire-format change.

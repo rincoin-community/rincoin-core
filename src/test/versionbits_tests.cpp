@@ -300,6 +300,23 @@ BOOST_AUTO_TEST_CASE(versionbits_align_deployment_heights)
     BOOST_CHECK_EQUAL(p.MinBIP9WarningHeight, p.SegwitHeight + (int)p.nMinerConfirmationWindow);
 }
 
+BOOST_AUTO_TEST_CASE(mweb_is_not_activated_on_mainnet)
+{
+    const auto main = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
+    const Consensus::BIP9Deployment& mweb = main->GetConsensus().vDeployments[Consensus::DEPLOYMENT_MWEB];
+    const int64_t never_active{Consensus::BIP9Deployment::NEVER_ACTIVE};
+    BOOST_CHECK_EQUAL(mweb.nStartTime, never_active);
+    BOOST_CHECK_EQUAL(mweb.nStartHeight, 0);
+    BOOST_CHECK_EQUAL(mweb.nTimeoutHeight, 0);
+    // The test networks keep MWEB, at the scaled mainnet heights.
+    for (const auto& chain : {CBaseChainParams::TESTNET, CBaseChainParams::REGTEST, CBaseChainParams::PREVIEW}) {
+        const auto params = CreateChainParams(*m_node.args, chain);
+        const Consensus::BIP9Deployment& d = params->GetConsensus().vDeployments[Consensus::DEPLOYMENT_MWEB];
+        BOOST_CHECK_EQUAL(d.nStartTime, 0);
+        BOOST_CHECK(d.nStartHeight > 0 && d.nStartHeight < d.nTimeoutHeight);
+    }
+}
+
 BOOST_AUTO_TEST_CASE(versionbits_sanity)
 {
     // Sanity checks of version bit deployments
