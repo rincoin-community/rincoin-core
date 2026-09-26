@@ -79,7 +79,10 @@ height 840,000 are validated exactly as before.
   are today. In 2026 Litecoin had to fix a consensus flaw in its MWEB validation that
   allowed the MWEB balance to be broken on its mainnet (0.21.5.4 to 0.21.5.6, all
   included in this release); activating MWEB on Rincoin is left to a later release.
-  Testnet, the preview network and regtest keep their MWEB deployment.
+  Testnet, the preview network and regtest keep their MWEB deployment. As for any
+  deployment that is never active, `getblockchaininfo` no longer lists `mweb` under
+  `softforks` on mainnet; software that reads that entry should treat its absence as
+  "not active".
 - **Nothing in a block identifies the rule set.** There is no mandatory coinbase
   commitment, no required block or transaction version, no new service bit and no
   wire-format change.
