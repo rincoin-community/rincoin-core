@@ -238,6 +238,16 @@ BIP9Stats VersionBitsTipStatistics(const Consensus::Params& params, Consensus::D
 int VersionBitsTipStateSinceHeight(const Consensus::Params& params, Consensus::DeploymentPos pos);
 
 
+/**
+ * Rincoin 840k: do the input scripts of this transaction verify under the signature
+ * regime that a block at nHeight is validated with? The regime is the only difference
+ * between the two calls; everything else is the ordinary standard-flag script check.
+ * Used both to clear the mempool when the tip crosses the transition height and to keep
+ * a leftover out of a block template (see RemoveForSigForkBoundary() in validation.cpp
+ * and BlockAssembler::ExcludeStaleSigForkTransactions() in miner.cpp).
+ */
+bool CheckInputsForSigForkRegime(const CTransaction& tx, const CCoinsViewCache& view, const Consensus::Params& consensus, int nHeight);
+
 /** Apply the effects of this transaction on the UTXO set represented by view */
 void UpdateCoins(const CTransaction& tx, CCoinsViewCache& inputs, int nHeight);
 

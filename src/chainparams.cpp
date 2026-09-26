@@ -14,6 +14,7 @@
 #include <util/strencodings.h>
 #include <versionbitsinfo.h>
 
+#include <algorithm>
 #include <assert.h>
 #include <stdexcept>
 
@@ -77,6 +78,16 @@ static CBlock CreateGenesisBlock(const char* pszTimestamp, const CScript& genesi
      return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
  }
 
+ static CBlock CreatePreviewGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
+ {
+     const char* pszTimestamp = "RinCoin Genesis Block - RinHash Preview2";
+     const CScript genesisOutputScript = CScript()
+         << ParseHex("049dcc1230171f40b336c78b70c32ff5109172a9e30d577e4071fb69e30ee40be7732aeaaf5497bf230a4640406a9c1b7c785732c380cd604bfa06802a1ba3894a")
+         << OP_CHECKSIG;
+
+     return CreateGenesisBlock(pszTimestamp, genesisOutputScript, nTime, nNonce, nBits, nVersion, genesisReward);
+ }
+
  static CBlock CreateRegTestGenesisBlock(uint32_t nTime, uint32_t nNonce, uint32_t nBits, int32_t nVersion, const CAmount& genesisReward)
  {
      const char* pszTimestamp = "RinCoin Genesis Block - RinHash RegTest1";
@@ -101,6 +112,76 @@ static std::vector<uint256> GetRegTestFrozenMWEBOutputIDs()
     return {
         uint256(ParseHex("2f3a08d9f5ef5f388386c11efe935394b14b524220cff4ec5c81942b82e694f7")),
     };
+}
+
+/**
+ * Height-840,000 transition (S6/b): derive the activation height and the subsidy
+ * table from the network's halving interval, using the same multiples on every
+ * network. On mainnet (interval 210,000) this yields 840,000 / 2,100,000 /
+ * 4,200,000 / 6,300,000 and the terminal height 234,587,500, i.e. exactly the
+ * schedule of analysis/Rincoin_840k_S6B_Consensus_Change_Specification in the
+ * consensus-840k repository. The terminal height is where the issuance ceiling
+ * (168,000,000 RIN on mainnet, scaled by interval / 210,000 elsewhere) is
+ * reached; where the scaled ceiling is not a multiple of the final subsidy the
+ * division rounds down, so the remainder stays unclaimable.
+ */
+static void SetS6bSchedule(Consensus::Params& consensus)
+{
+    const int64_t interval = consensus.nSubsidyHalvingInterval;
+    const CAmount tail_subsidy = 60000000; // 0.6 RIN
+
+    // Maximum issuance below 30 intervals: 50, 25, 12.5, 6.25 RIN for one interval
+    // each, then 4 RIN for 6, 2 RIN for 10 and 1 RIN for 10 intervals.
+    CAmount issued = 0;
+    for (int k = 0; k < 4; ++k) issued += ((50 * COIN) >> k) * interval;
+    issued += (4 * COIN) * 6 * interval;
+    issued += (2 * COIN) * 10 * interval;
+    issued += (1 * COIN) * 10 * interval;
+
+    // 168,000,000 RIN / 210,000 blocks = 800 RIN of ceiling per block of interval.
+    const CAmount ceiling = 800 * COIN * interval;
+    assert(ceiling > issued);
+    const int64_t terminal = 30 * interval + (ceiling - issued) / tail_subsidy;
+    assert(terminal < std::numeric_limits<int>::max());
+
+    consensus.nS6bHeight = static_cast<int>(4 * interval);
+    consensus.vS6bSubsidyPhases = {
+        {static_cast<int>(4 * interval), 4 * COIN},
+        {static_cast<int>(10 * interval), 2 * COIN},
+        {static_cast<int>(20 * interval), 1 * COIN},
+        {static_cast<int>(30 * interval), tail_subsidy},
+        {static_cast<int>(terminal), 0},
+    };
+}
+
+/** Scale a mainnet height to a test network by the ratio of the halving intervals, rounding down. */
+static int ScaleMainnetHeight(int64_t mainnet_height, const Consensus::Params& consensus)
+{
+    return static_cast<int>(mainnet_height * consensus.nSubsidyHalvingInterval / 210000);
+}
+
+/**
+ * Height-based start and timeout of a version-bits deployment on a test network, from the
+ * mainnet heights: scaled like every other height, then rounded down to a multiple of the
+ * network's confirmation window. A version-bits state only changes on a window boundary, so
+ * with aligned heights the configured numbers are the heights at which something happens,
+ * as on mainnet. The timeout is kept at least one window after the start, so that every
+ * deployment has a signalling period. consensus.nMinerConfirmationWindow has to be set first.
+ */
+std::pair<int64_t, int64_t> AlignDeploymentHeights(int64_t start, int64_t timeout, int64_t window)
+{
+    assert(window > 0);
+    const int64_t aligned_start = start / window * window;
+    return {aligned_start, std::max<int64_t>(timeout / window * window, aligned_start + window)};
+}
+
+static void SetScaledDeploymentHeights(Consensus::Params& consensus, Consensus::DeploymentPos pos, int64_t mainnet_start, int64_t mainnet_timeout)
+{
+    const int64_t window = consensus.nMinerConfirmationWindow;
+    assert(window > 0);
+    const auto aligned = AlignDeploymentHeights(ScaleMainnetHeight(mainnet_start, consensus), ScaleMainnetHeight(mainnet_timeout, consensus), window);
+    consensus.vDeployments[pos].nStartHeight = aligned.first;
+    consensus.vDeployments[pos].nTimeoutHeight = aligned.second;
 }
 
 /**
@@ -133,7 +214,12 @@ public:
         // the MWEB-capable baseline required from genesis (symbolic: the network
         // already runs >= 70017); 70018 (RinHash-aware) is required from the
         // fourth-halving boundary onward.
-        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {840000, 70018}};
+        // Height-840,000 transition (S6/b subsidy, sig_fork_id, activation-block coinbase rule).
+        SetS6bSchedule(consensus);
+        assert(consensus.nS6bHeight == 840000);
+        assert(consensus.vS6bSubsidyPhases.back().nStartHeight == 234587500);
+        assert(800 * COIN * (int64_t)consensus.nSubsidyHalvingInterval == MAX_MONEY);
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {consensus.nS6bHeight, 70018}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
@@ -143,10 +229,18 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight = 2161152; // End November 2021
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight = 2370816; // 364 days later
 
-        // Deployment of MWEB (LIP-0002, LIP-0003, and LIP-0004)
+        // Deployment of MWEB (LIP-0002, LIP-0003, and LIP-0004): not activated on mainnet, in
+        // line with other implementations of this chain. The deployment heights inherited from
+        // Litecoin would have activated it at the timeout height even without signalling.
+        // In 2026 Litecoin had to fix a consensus flaw in its MWEB validation that allowed the
+        // MWEB balance to be broken on its mainnet (Litecoin Core 0.21.5.4 to 0.21.5.6, all of
+        // it included here); activation is left to a later release that decides it deliberately. MWEB
+        // transactions stay non-standard and MWEB data in a block stays invalid, as they are
+        // before any activation. The test networks keep their scaled heights so that MWEB
+        // remains testable there.
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].bit = 4;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight = 2217600; // End Feb 2022
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight = 2427264; // 364 days later
+        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
         consensus.nMinimumChainWork = uint256S("0x00");
         consensus.defaultAssumeValid = uint256S("0x000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");
@@ -331,6 +425,83 @@ public:
                 {428257, uint256S("0x0000000106efeb97bc659c4a64854fd87496ddffd34b9d364f5075ab669c1812")},
                 {431349, uint256S("0x000000000ba202bb8e21b2d1692771005d5068a034442908582ad1217f0def8c")},
                 {435935, uint256S("0x000000011e8878e186627ae2a8044aaf34634d4130d9a6c9a9d321edcf73f80d")},
+                {440000, uint256S("0x00000001d05a9500a185fe4fe9ec3cf9b3325d0add4012a1b35a93ec98c204fe")},
+                {443670, uint256S("0x000000033a8f66bde87b4aba7100a23a1edb20dd71483d7665cc30051af00871")},
+                {447836, uint256S("0x0000000266a6ad7f17d826cb3d9531a54bd386f181858f25cd072249ca93e6ec")},
+                {449861, uint256S("0x00000000a4734aaf439c7a29b503011ae18d3ab34e7da9ead4b44086b608a2cb")},
+                {452087, uint256S("0x00000002d6592176adc0a38d3c4dc3d098fd69fc1b8cb5948d7bae48721edb17")},
+                {454271, uint256S("0x00000002571d25e9d8ec91be3bc06a0ab4a701a411ea79313fed9f0ad4b03f20")},
+                {460093, uint256S("0x0000000315081393ea2b5804a6ef409f1eaee5d61a912ac93cc45ff060dac0a8")},
+                {465167, uint256S("0x000000026ba8ec4eefc79ca3adfd597bf128c3338d92a5aa21486487a920ef80")},
+                {470400, uint256S("0x00000001c367ba480f54c956dbf09caba12c6ffb3df74ecafbb56ebd316b34b7")},
+                {475934, uint256S("0x000000024d2fe66357c3f5690461efd7a421f73848fb2aa3d2228d25e89f3c35")},
+                {479505, uint256S("0x0000000067b3a8f69359399067dfbb7c57885ff9d4f99c73f6034a9ce0e21186")},
+                {483566, uint256S("0x00000002f4a97503b2b8136c2399bddb259897761c8f7e5d2b711ed82aabb53c")},
+                {488849, uint256S("0x000000021e3c7025cc192e5a61de1cf98b186290b96b6942db2de1ae855c6d80")},
+                {492108, uint256S("0x00000001012944d3f34a3cf449248b7b48dbcbed2d8bf9f928ca50df1fde4574")},
+                {495034, uint256S("0x00000001d806e95591e8c25e36e100a2a8a950ac691d53575acdf6b4ddef0228")},
+                {498147, uint256S("0x000000012f6642cfb300fd67e74c95c6575aac910a8242cb73d067b1204068d4")},
+                {500649, uint256S("0x00000000758c1c5cabd04da5332f07f2491e5098f20856967a54b9d6514c50b2")},
+                {505935, uint256S("0x000000015e63e37fd88947045999fb7794d2bb9a42f8f3f406521e9d1f6a1649")},
+                {511411, uint256S("0x00000001ddc6441d76fdd8115dde41b62eab8fcf93bb536e8ebb1a335a93ec8f")},
+                {514520, uint256S("0x0000000179e2da5e4a368a2dc5a68a21e82bbb7925e99fe52ccf1ce9c44e092e")},
+                {520154, uint256S("0x000000003626b1e03bad426c2d60016ee111d30c11b1c15fddbb4daa87facd09")},
+                {523044, uint256S("0x00000003989d1bbaa78ddce066e149aadea2c0697d611bd7dd79f9ebdd5f276a")},
+                {528918, uint256S("0x0000000168f341bf13f3ee7ff4b88edd9f991fdcab1b166467fc9631fad87099")},
+                {532996, uint256S("0x000000039d9d6bf6120a905680c9aa794b910fa55a8ebfe2d4046346c6520a47")},
+                {536378, uint256S("0x00000001fb9a118cc73b3ba0b22f22300e67599689bac307caa23b62474ac0d6")},
+                {538902, uint256S("0x000000001906e83bbf7309fa1fa4bbc9884fc27348ab1527da14adaf0f968c0d")},
+                {542411, uint256S("0x0000000113ceed0b0d08ecd7e407f414ecc1df254f4a1d6e5c61be8dde54337c")},
+                {545496, uint256S("0x00000002aa3106eecbc41bb3e10de0c92b95fe8aa508c611dc9d407033c0a9b9")},
+                {547611, uint256S("0x000000020a8b4e910548f031e7747772b38cc353c71833422913babb13296ed7")},
+                {550845, uint256S("0x000000019a83dc7bbc6b79b3d11a830b009400d1689b6f80b6866ecd6df3e744")},
+                {555385, uint256S("0x00000001dc883d0d9c72ef1d5cb916b3fd3a4910406985f1083464e298591efd")},
+                {559517, uint256S("0x000000017338c4ce1fdf825781e55ca7491a45b5514880c9561b9f1b48d7ee0c")},
+                {564769, uint256S("0x000000037387ff8ad5c59c142ce95e2d0d0dcef9e3a6dd56e08579eaf8c167bb")},
+                {568403, uint256S("0x00000002793dded4556d52593b245928f19ddf57925a5cd91606d885a80b1272")},
+                {574313, uint256S("0x00000003b2bd297540daac7dfa419a5a3a89f6b88471fc6bbd6e1cdd8e9c9b53")},
+                {579575, uint256S("0x00000000acfb9788901e8517e3830b62346849ce4e6fa0565a5b73f2d37d8d41")},
+                {583521, uint256S("0x00000001d2d4fbad34a80810e9c98b6c5183e131ddda25120ff2a51172cf913c")},
+                {586910, uint256S("0x00000001fc13c35c232d7b71a439bbb58ce87990498eda5cf4e69a45b802f52c")},
+                {590848, uint256S("0x000000039c65ec08d79b250378cdce31092372eafaa7a411ec2abc7c340449f4")},
+                {593182, uint256S("0x00000001e750803583e162c552a5b63123e14b43805ae7e9cf693394fc5215ce")},
+                {595375, uint256S("0x0000000302990a82811c7e6ab7d17ca7592e4a6dbcebc81d95a685d70ba6ad84")},
+                {600948, uint256S("0x00000001d7b5f1564113d304d0181b17076755fbb83399c745c440588d1491dc")},
+                {606594, uint256S("0x000000019c304fc6277b5e776b95c34e4fa6730609a7cd5660f2fb26b73765bd")},
+                {609217, uint256S("0x0000000337305d0b08900283d1cc7004d8dcd8bd807da6c8ba8f11df0765b154")},
+                {613594, uint256S("0x000000002b69d767bb2cde52360e558b8917cec776e200a129a55fff16f48a4b")},
+                {616895, uint256S("0x000000071a40309b9513f230de47d741b7eed4acd26486e901f093f681017cc3")},
+                {621001, uint256S("0x0000000216458c787d45acf1b4c07111b1c39218fca428b415edf0d340059031")},
+                {626397, uint256S("0x00000004951583c3e7e6b9886dd43f2305023be568f421f378f7d52463c2ebe5")},
+                {631143, uint256S("0x00000000058327914905707763b3d38ab84c4ea51baecb5ea3f835760e218708")},
+                {635591, uint256S("0x000000042c38628436edc34266579eca0daffb24521ba17fece6ccba6e680625")},
+                {638450, uint256S("0x0000000348c4b9c5c7630de7455e09544fc8d9a08e8993b9c9b23b8dd7b08852")},
+                {643475, uint256S("0x00000000fb5585002893839a4c5ff3802282db604f7dcc68a27d1454177eeecd")},
+                {648138, uint256S("0x000000014ea5d7dad52630244d55f82f399d376afabab1a8133f7b12f4dfc2d7")},
+                {651412, uint256S("0x00000002cc514441a2ccc85bba29bbf1e1974b9e3a1b8096e9ecba5273fb21b1")},
+                {655641, uint256S("0x000000019c49152f13a2fab0ebcaed5eda3681f036b888d4a44d81bc3c136105")},
+                {658202, uint256S("0x000000035596b55b9b68c44b837c5d0586657ce507161360ced7b4fe030dd426")},
+                {663795, uint256S("0x00000002406033bf973316b72b90e72283b5c2b383fce7a93971cfb482e3ac92")},
+                {666768, uint256S("0x00000001cb60ea1eb7074733a4489773149fb79ed24258b93c941db85cf9a9e3")},
+                {672726, uint256S("0x0000000025ff80fb65fa75aa6a146dd071f96c52f06b60f9a2e471c0635df6ff")},
+                {675576, uint256S("0x00000002ef4c408162f3454f6872579d4244c96696d782f7ee06dde7c092d11e")},
+                {680076, uint256S("0x000000000454748939278b84a1f57a38c41780da7c30fce4ec7a82bf155147f4")},
+                {682293, uint256S("0x000000079cc52db33fb00ab3364743b7763dbf5edd181d5c17f490dc7ad89c44")},
+                {685420, uint256S("0x000000018acb9e7e75539e4d31fc114c20b6cc893a73f17f213e884404379953")},
+                {689289, uint256S("0x000000001636e6e77b1b465494d563b68f121e441dd9b82c5c56da3d78dac062")},
+                {692577, uint256S("0x000000029db1e84453974231ababb6173e440142e68e7109ae19f0a9c9d17af8")},
+                {698096, uint256S("0x00000003b0ee86239b57e973ea1bebec897edc423f9d7eb3f90d203e062ffc44")},
+                {702169, uint256S("0x0000000127450ea257151768bef7d8bb32e0fd3c1c85262c18ddfdc7ea60ab0b")},
+                {707938, uint256S("0x000000041894e6d1199f77241f56e23ecfcb665ac7ff8dd109c43b852b670af1")},
+                {710024, uint256S("0x000000040bdda51c32fb48b388c04be659eaf9dcb7d192a80568106088a3e768")},
+                {714538, uint256S("0x00000003cf592b0b982e01dfeddf06d0cc0ba75e88c185704e24625bd164c345")},
+                {719191, uint256S("0x000000039fdb1898dd9aafa5c33a6aa4a91d8e5473f2476d9ca8c749a1b847c2")},
+                {725101, uint256S("0x000000014d2f8b413cbb137f76319a4c9f6203ffd0a08c0ceaac6f859805d898")},
+                {727785, uint256S("0x00000001ee990ea1daa6132102fd1b48cd28aebd070a24307eeaded0180256ca")},
+                {733619, uint256S("0x00000000501157521c802551e34e0ee606347b7b9051ab535cd5fd251fa72615")},
+                {739357, uint256S("0x000000030ed41167ab0ea66e25a1a32ded4cae6297ae47812205d14ceb97c110")},
+                {741773, uint256S("0x000000050a8dc4e40f0ea88244f4c19e7d23b8e8acf7c55ec031b540e58da809")},
+                {744278, uint256S("0x00000000fdbd9b735140b274e0e2fd616ef8efedbc6edf14f764aef20c739dd9")},
             }
         };
         chainTxData = ChainTxData{
@@ -351,15 +522,17 @@ public:
         strNetworkID = CBaseChainParams::TESTNET;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 210000;
+        // 1/100 of mainnet's halving interval. Every scheduled height below is the
+        // mainnet height scaled by that ratio (rounded down); see doc/rincoin-parameters.md.
+        consensus.nSubsidyHalvingInterval = 2100;
         consensus.BIP16Height = 0; // always enforce P2SH BIP16 on testnet
-        consensus.BIP34Height = 76;
-        consensus.BIP34Hash = uint256S("8075c771ed8b495ffd943980a95f702ab34fce3c8c54e379548bda33cc8c0573");
-        consensus.BIP65Height = 76; // 8075c771ed8b495ffd943980a95f702ab34fce3c8c54e379548bda33cc8c0573
-        consensus.BIP66Height = 76; // 8075c771ed8b495ffd943980a95f702ab34fce3c8c54e379548bda33cc8c0573
-        consensus.CSVHeight = 6048; // 00000000025e930139bac5c6c31a403776da130831ab85be56578f3fa75369bb
-        consensus.SegwitHeight = 6048; // 00000000002b980fcd729daaa248fd9316a5200e9b367f4ff2c42453e84201ca
-        consensus.MinBIP9WarningHeight = 8064; // segwit activation height + miner confirmation window
+        consensus.BIP34Height = ScaleMainnetHeight(26500, consensus); // 265
+        consensus.BIP34Hash = uint256();
+        consensus.BIP65Height = ScaleMainnetHeight(26500, consensus);
+        consensus.BIP66Height = ScaleMainnetHeight(26500, consensus);
+        consensus.CSVHeight = ScaleMainnetHeight(26500, consensus);
+        consensus.SegwitHeight = ScaleMainnetHeight(26500, consensus);
+        consensus.MinBIP9WarningHeight = consensus.SegwitHeight + 2016; // segwit activation height + miner confirmation window
         consensus.powLimit = uint256S("0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
         consensus.nPowTargetSpacing = 60;
@@ -367,24 +540,30 @@ public:
         consensus.fPowNoRetargeting = false;
         consensus.nRuleChangeActivationThreshold = 1512; // 75% for testchains
         consensus.nMinerConfirmationWindow = 2016; // nPowTargetTimespan / nPowTargetSpacing
-        consensus.DGWHeight = 100; // Dark Gravity Wave (DGW) difficulty adjustment algorithm
+        consensus.DGWHeight = ScaleMainnetHeight(30000, consensus); // 300; Dark Gravity Wave (DGW) difficulty adjustment algorithm
+        // Height-840,000 transition at 4 intervals (8,400), like mainnet's 840,000.
+        SetS6bSchedule(consensus);
+        assert(consensus.nS6bHeight == 8400);
+        assert(consensus.vS6bSubsidyPhases.back().nStartHeight == 2345875);
         // Peer-protocol-version floor schedule (height -> min version): 70017
-        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 4200.
-        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {4200, 70018}};
+        // MWEB-capable baseline from genesis, 70018 from the transition height.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {consensus.nS6bHeight, 70018}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
-        // Deployment of Taproot (BIPs 340-342) — after SegWit (6048); height-based
+        // Deployment of Taproot (BIPs 340-342), scaled from mainnet; height-based
         // deployments flag-day activate by nTimeoutHeight even without signaling.
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight = 8064;   // 4 * 2016
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight = 10080; // 5 * 2016
+        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_TAPROOT, 2161152, 2370816); // 21,611 / 23,708 -> 20,160 / 22,176
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight == 20160);
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight == 22176);
 
-        // Deployment of MWEB (LIP-0002, LIP-0003, and LIP-0004) — after SegWit (6048)
+        // Deployment of MWEB (LIP-0002, LIP-0003, and LIP-0004), scaled from mainnet
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].bit = 4;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight = 8064;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight = 10080;
+        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_MWEB, 2217600, 2427264); // 22,176 / 24,272 -> 22,176 / 24,192
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight == 22176);
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight == 24192);
 
         consensus.nMinimumChainWork = uint256S("0x00");
         consensus.defaultAssumeValid = uint256S("0x00009d5fbc8579e8b4292f1bab22437d9468c0cc615cb5b0242d8159b31760ad");
@@ -449,7 +628,13 @@ public:
         strNetworkID =  CBaseChainParams::REGTEST;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        consensus.nSubsidyHalvingInterval = 150;
+        // 1/1000 of mainnet's halving interval (upstream regtest uses 150). The
+        // height-840,000 transition, the peer-version floor and the MWEB deployment
+        // use the mainnet heights scaled by that ratio, so their order matches
+        // mainnet. The BIP34/65/66/CSV/SegWit heights, always-active Taproot and the
+        // disabled DGW below are the upstream regtest conventions that the inherited
+        // test suite depends on, and are deliberately left alone.
+        consensus.nSubsidyHalvingInterval = 210;
         consensus.BIP16Height = 0;
         consensus.BIP34Height = 500; // BIP34 activated on regtest (Used in functional tests)
         consensus.BIP34Hash = uint256();
@@ -460,9 +645,13 @@ public:
         consensus.MinBIP9WarningHeight = 0;
         consensus.powLimit = uint256S("7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.DGWHeight = std::numeric_limits<int>::max();  // Turns off Dark Gravity Wave (DGW) difficulty adjustment algorithm for regtest
+        // Height-840,000 transition at 4 intervals (840), like mainnet's 840,000.
+        SetS6bSchedule(consensus);
+        assert(consensus.nS6bHeight == 840);
+        assert(consensus.vS6bSubsidyPhases.back().nStartHeight == 234587);
         // Peer-protocol-version floor schedule (height -> min version): 70017
-        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
-        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
+        // MWEB-capable baseline from genesis, 70018 from the transition height.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {consensus.nS6bHeight, 70018}};
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33hour
         consensus.nPowTargetSpacing = 60; // match mainnet spacing (regtest convention)
         consensus.fPowAllowMinDifficultyBlocks = true;
@@ -480,8 +669,12 @@ public:
 
         // Deployment of MWEB (LIP-0002 and LIP-0003)
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].bit = 4;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartTime = 1601450001; // September 30, 2020
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
+        // Height-based like mainnet and scaled from it, so MWEB activates after the
+        // height-840,000 transition here too: STARTED at 2,160, LOCKED_IN at 2,304,
+        // ACTIVE at 2,448. Tests that want MWEB earlier or never use -vbparams=mweb:...
+        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_MWEB, 2217600, 2427264); // 2,217 / 2,427 -> 2,160 / 2,304
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight == 2160);
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight == 2304);
 
         consensus.nMinimumChainWork = uint256{};
         consensus.defaultAssumeValid = uint256{};
@@ -602,14 +795,15 @@ void CRegTestParams::UpdateActivationParametersFromArgs(const ArgsManager& args)
 
 
 /**
- * Preview network (publicly reachable fork-rehearsal chain).
+ * Preview network (publicly reachable rehearsal chain).
  *
- * Combines testnet's PoW characteristics (real mining,
- * fPowAllowMinDifficultyBlocks + DGW retarget at h=100) with regtest's fast
- * RinHash activation schedule (activation 0 at height 600), so operators can
- * rehearse activation-0 behaviour on a real PoW network in minutes.
- * Genesis block, vFixedSeeds and chainTxData are reused verbatim from
- * testnet so we do not have to ship a separate genesis / seed table.
+ * Real proof of work as on testnet (mainnet's powLimit and block spacing, DGW
+ * retargeting) with the compressed schedule of regtest: every scheduled height
+ * is the mainnet height divided by 1,000, and the versionbits window is the
+ * regtest one. It has its own genesis block, message start, ports and address
+ * prefixes. A rehearsal that needs a fresh chain gets a new genesis block in a
+ * new build: a fresh chain on the same genesis block would lose against any
+ * node that kept the earlier, longer one.
  */
 class CPreviewParams : public CChainParams {
 public:
@@ -617,43 +811,57 @@ public:
         strNetworkID = CBaseChainParams::PREVIEW;
         consensus.signet_blocks = false;
         consensus.signet_challenge.clear();
-        // Regtest-style fast halving for fork rehearsal (~2.5h per halving).
-        consensus.nSubsidyHalvingInterval = 150;
+        // Public rehearsal network: 1/1000 of mainnet's halving interval (~3.5h per
+        // interval). Every scheduled height below is the mainnet height scaled by
+        // that ratio (rounded down); see doc/rincoin-parameters.md.
+        consensus.nSubsidyHalvingInterval = 210;
         consensus.BIP16Height = 0;
-        consensus.BIP34Height = 76;
-        consensus.BIP34Hash = uint256S("8075c771ed8b495ffd943980a95f702ab34fce3c8c54e379548bda33cc8c0573");
-        consensus.BIP65Height = 76;
-        consensus.BIP66Height = 76;
-        consensus.CSVHeight = 432;
-        consensus.SegwitHeight = 432;
-        consensus.MinBIP9WarningHeight = 8064;
+        consensus.BIP34Height = ScaleMainnetHeight(26500, consensus); // 26
+        consensus.BIP34Hash = uint256();
+        consensus.BIP65Height = ScaleMainnetHeight(26500, consensus);
+        consensus.BIP66Height = ScaleMainnetHeight(26500, consensus);
+        consensus.CSVHeight = ScaleMainnetHeight(26500, consensus);
+        consensus.SegwitHeight = ScaleMainnetHeight(26500, consensus);
+        consensus.MinBIP9WarningHeight = consensus.SegwitHeight + 144; // segwit activation height + miner confirmation window
         consensus.powLimit = uint256S("0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff");
         consensus.nPowTargetTimespan = 33 * 60 * 60; // 33h
         consensus.nPowTargetSpacing = 60;
+        // (Without effect here, as on testnet: the difficulty is the powLimit until DGW
+        // takes over, and DGW does not know the min-difficulty rule.)
         consensus.fPowAllowMinDifficultyBlocks = true;
         consensus.fPowNoRetargeting = false;
-        consensus.nRuleChangeActivationThreshold = 324; // 75% of 432 (fast preview window)
-        consensus.nMinerConfirmationWindow = 432;       // short BIP9 window so upgrades rehearse quickly
-        consensus.DGWHeight = 100;
+        consensus.nRuleChangeActivationThreshold = 108; // 75% for testchains
+        consensus.nMinerConfirmationWindow = 144; // as on regtest
+        consensus.DGWHeight = ScaleMainnetHeight(30000, consensus); // 30
+        // Height-840,000 transition at 4 intervals (840), like mainnet's 840,000.
+        SetS6bSchedule(consensus);
+        assert(consensus.nS6bHeight == 840);
+        assert(consensus.vS6bSubsidyPhases.back().nStartHeight == 234587);
         // Peer-protocol-version floor schedule (height -> min version): 70017
-        // MWEB-capable baseline from genesis, 70018 (RinHash) from height 600.
-        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {600, 70018}};
+        // MWEB-capable baseline from genesis, 70018 from the transition height.
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}, {consensus.nS6bHeight, 70018}};
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].bit = 28;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_TESTDUMMY].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
-        // Taproot/MWEB — after SegWit (432); fast preview window (432) so they
-        // flag-day activate within ~a day of the SegWit activation.
+        // Taproot/MWEB — scaled from mainnet, so both come after the height-840,000
+        // transition as they do on mainnet. Both round down to the same windows here, as
+        // MWEB does on regtest: STARTED at 2,160, LOCKED_IN at 2,304, ACTIVE at 2,448.
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].bit = 2;
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight = 864;   // 2 * 432
-        consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight = 1296; // 3 * 432
+        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_TAPROOT, 2161152, 2370816); // 2,161 / 2,370 -> 2,160 / 2,304
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nStartHeight == 2160);
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight == 2304);
 
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].bit = 4;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight = 864;
-        consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight = 1296;
+        SetScaledDeploymentHeights(consensus, Consensus::DEPLOYMENT_MWEB, 2217600, 2427264); // 2,217 / 2,427 -> 2,160 / 2,304
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight == 2160);
+        assert(consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight == 2304);
 
         consensus.nMinimumChainWork = uint256S("0x00");
-        consensus.defaultAssumeValid = uint256S("0x00009d5fbc8579e8b4292f1bab22437d9468c0cc615cb5b0242d8159b31760ad");
+        consensus.defaultAssumeValid = uint256S("0x00004282aaa888c5b7a1bb210464788510d3c5976a8cec49061a3eb49d04ff33"); // preview genesis
+
+        consensus.mweb_pegout_feature_activation_height = 0;
+        consensus.mweb_extradata_feature_activation_height = 0;
 
         pchMessageStart[0] = 0x72; // 'r'
         pchMessageStart[1] = 0x69; // 'i'
@@ -664,12 +872,13 @@ public:
         m_assumed_blockchain_size = 4;
         m_assumed_chain_state_size = 1;
 
-        // Reuse testnet's genesis verbatim so we can share testnet's seed
-        // table and chainTxData.
-        genesis = CreateTestNetGenesisBlock(1743059000, 27864, 0x1f00ffff, 1, 50 * COIN);
+        // Preview has its own genesis block (it used to reuse testnet's). Wallets,
+        // Electrum-style servers and explorers identify a chain by its genesis
+        // hash, and the two networks have different consensus parameters.
+        genesis = CreatePreviewGenesisBlock(1789862400, 104436, 0x1f00ffff, 1, 50 * COIN);
         consensus.hashGenesisBlock = genesis.GetHash();
-        assert(consensus.hashGenesisBlock == uint256S("0x00009d5fbc8579e8b4292f1bab22437d9468c0cc615cb5b0242d8159b31760ad"));
-        assert(genesis.hashMerkleRoot == uint256S("0x7a2a292324679fdd5b843a9daf72acc7b2801ab95321e863e545f69ced707b0e"));
+        assert(consensus.hashGenesisBlock == uint256S("0x00004282aaa888c5b7a1bb210464788510d3c5976a8cec49061a3eb49d04ff33"));
+        assert(genesis.hashMerkleRoot == uint256S("0x687b2f9d3bbd319b5d841fa72f2269657606a777d289f1b7f612cc8396de7843"));
 
         vFixedSeeds.clear();
         vSeeds.clear();
@@ -688,7 +897,8 @@ public:
         bech32_hrp = "prin";
         mweb_hrp   = "prmweb";
 
-        vFixedSeeds = std::vector<uint8_t>(std::begin(chainparams_seed_test), std::end(chainparams_seed_test));
+        // No fixed seeds: preview is a short-lived rehearsal network whose nodes are announced ad hoc.
+        vFixedSeeds.clear();
 
         fDefaultConsistencyChecks = false;
         fRequireStandard = false;
@@ -697,12 +907,12 @@ public:
 
         checkpointData = {
             {
-                {0, uint256S("0x00009d5fbc8579e8b4292f1bab22437d9468c0cc615cb5b0242d8159b31760ad")}
+                {0, uint256S("0x00004282aaa888c5b7a1bb210464788510d3c5976a8cec49061a3eb49d04ff33")}
             }
         };
 
         chainTxData = ChainTxData{
-            /* nTime    */ 1743059000,
+            /* nTime    */ 1789862400,
             /* nTxCount */ 1,
             /* dTxRate  */ 0.0
         };

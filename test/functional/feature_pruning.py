@@ -110,7 +110,7 @@ class PruneTest(BitcoinTestFramework):
 
     def setup_nodes(self):
         self.add_nodes(self.num_nodes, self.extra_args)
-        # MWEB activates on the regtest chain around height 432 and from then on
+        # MWEB activates on the regtest chain at height 2,448 and from then on
         # every block must carry the MWEB extension block (HogEx). This test grows
         # the chain well past that height with hand-built blocks (mine_large_blocks)
         # that have no MWEB extension, which the node would otherwise reject with

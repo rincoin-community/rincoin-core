@@ -256,12 +256,13 @@ clone_and_checkout() {
     if [ "$LOCAL_BUILD" = "true" ]; then
         cd "$PROJECT_ROOT"
         mkdir -p "$SOURCE_DIR"
-        if [ -d .git ] && command -v rsync >/dev/null 2>&1; then
+        # -e, not -d: in a linked git worktree .git is a file
+        if [ -e .git ] && command -v rsync >/dev/null 2>&1; then
             git ls-files -z | rsync -a --ignore-missing-args --files-from=- --from0 "${PROJECT_ROOT}/" "${SOURCE_DIR}/"
             git ls-files --others --exclude-standard -z | rsync -a --ignore-missing-args --files-from=- --from0 "${PROJECT_ROOT}/" "${SOURCE_DIR}/" 2>/dev/null || true
             cp -r "${PROJECT_ROOT}/.git" "${SOURCE_DIR}/.git" 2>/dev/null || true
         else
-            cp -r "$PROJECT_ROOT" "$SOURCE_DIR"
+            cp -r "$PROJECT_ROOT/." "$SOURCE_DIR/"
             rm -rf "${SOURCE_DIR}/release-builds" "${SOURCE_DIR}/.build-cache" "${SOURCE_DIR}/depends/built" "${SOURCE_DIR}/depends/work"
         fi
     else

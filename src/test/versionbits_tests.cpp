@@ -278,6 +278,45 @@ BOOST_AUTO_TEST_CASE(versionbits_test)
     }
 }
 
+BOOST_AUTO_TEST_CASE(versionbits_align_deployment_heights)
+{
+    using P = std::pair<int64_t, int64_t>;
+    // Already aligned (mainnet MWEB)
+    BOOST_CHECK(AlignDeploymentHeights(2217600, 2427264, 8064) == P(2217600, 2427264));
+    // Rounded down to different windows (regtest and preview MWEB)
+    BOOST_CHECK(AlignDeploymentHeights(2217, 2427, 144) == P(2160, 2304));
+    // Both in the same window: the timeout is the window after the start
+    BOOST_CHECK(AlignDeploymentHeights(2217, 2427, 432) == P(2160, 2592));
+    BOOST_CHECK(AlignDeploymentHeights(10, 20, 144) == P(0, 144));
+    // Preview and regtest share the MWEB heights
+    const auto preview = CreateChainParams(*m_node.args, CBaseChainParams::PREVIEW);
+    const auto regtest = CreateChainParams(*m_node.args, CBaseChainParams::REGTEST);
+    const auto& p = preview->GetConsensus(); const auto& r = regtest->GetConsensus();
+    BOOST_CHECK_EQUAL(p.nMinerConfirmationWindow, r.nMinerConfirmationWindow);
+    BOOST_CHECK_EQUAL(p.nRuleChangeActivationThreshold, r.nRuleChangeActivationThreshold);
+    BOOST_CHECK_EQUAL(p.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight, r.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartHeight);
+    BOOST_CHECK_EQUAL(p.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight, r.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeoutHeight);
+    BOOST_CHECK_EQUAL(p.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeoutHeight, 2304);
+    BOOST_CHECK_EQUAL(p.MinBIP9WarningHeight, p.SegwitHeight + (int)p.nMinerConfirmationWindow);
+}
+
+BOOST_AUTO_TEST_CASE(mweb_is_not_activated_on_mainnet)
+{
+    const auto main = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
+    const Consensus::BIP9Deployment& mweb = main->GetConsensus().vDeployments[Consensus::DEPLOYMENT_MWEB];
+    const int64_t never_active{Consensus::BIP9Deployment::NEVER_ACTIVE};
+    BOOST_CHECK_EQUAL(mweb.nStartTime, never_active);
+    BOOST_CHECK_EQUAL(mweb.nStartHeight, 0);
+    BOOST_CHECK_EQUAL(mweb.nTimeoutHeight, 0);
+    // The test networks keep MWEB, at the scaled mainnet heights.
+    for (const auto& chain : {CBaseChainParams::TESTNET, CBaseChainParams::REGTEST, CBaseChainParams::PREVIEW}) {
+        const auto params = CreateChainParams(*m_node.args, chain);
+        const Consensus::BIP9Deployment& d = params->GetConsensus().vDeployments[Consensus::DEPLOYMENT_MWEB];
+        BOOST_CHECK_EQUAL(d.nStartTime, 0);
+        BOOST_CHECK(d.nStartHeight > 0 && d.nStartHeight < d.nTimeoutHeight);
+    }
+}
+
 BOOST_AUTO_TEST_CASE(versionbits_sanity)
 {
     // Sanity checks of version bit deployments
@@ -290,6 +329,8 @@ BOOST_AUTO_TEST_CASE(versionbits_sanity)
 
         // Check start height is on a retarget boundary
         BOOST_CHECK_EQUAL(mainnetParams.vDeployments[i].nStartHeight % mainnetParams.nMinerConfirmationWindow, 0U);
+        // ... and so is the timeout height
+        BOOST_CHECK_EQUAL(mainnetParams.vDeployments[i].nTimeoutHeight % mainnetParams.nMinerConfirmationWindow, 0U);
         // Check start_height is 0 for ALWAYS_ACTIVE and never active deployments
         if (mainnetParams.vDeployments[i].nStartTime == Consensus::BIP9Deployment::ALWAYS_ACTIVE || mainnetParams.vDeployments[i].nStartTime == Consensus::BIP9Deployment::NEVER_ACTIVE) {
             BOOST_CHECK_EQUAL(mainnetParams.vDeployments[i].nStartHeight, 0);
@@ -327,11 +368,15 @@ static void check_computeblockversion_bip8(const Consensus::Params& params, Cons
     // should not be any signalling for first block
     BOOST_CHECK_EQUAL(ComputeBlockVersion(nullptr, params), VERSIONBITS_TOP_BITS);
 
+    // Start and timeout heights are multiples of the confirmation window on every network: the
+    // test networks scale the mainnet heights and round them down to a window boundary
+    // (SetScaledDeploymentHeights() in chainparams.cpp), with at least one window between them.
     BOOST_CHECK(nStartHeight >= 0);
     BOOST_CHECK_EQUAL(nStartHeight % nMinerConfirmationWindow, 0U);
 
     BOOST_CHECK(nTimeoutHeight <= std::numeric_limits<uint32_t>::max());
     BOOST_CHECK_EQUAL(nTimeoutHeight % nMinerConfirmationWindow, 0U);
+    BOOST_CHECK(nStartHeight < nTimeoutHeight);
 
     BOOST_CHECK(0 <= bit && bit < 32);
     BOOST_CHECK((bit_mask & VERSIONBITS_TOP_MASK) == 0);
@@ -553,7 +598,7 @@ BOOST_AUTO_TEST_CASE(versionbits_computeblockversion)
 {
     // check that any deployment on any chain can conceivably reach both
     // ACTIVE and FAILED states in roughly the way we expect
-    for (const auto& chain_name : { CBaseChainParams::MAIN, CBaseChainParams::TESTNET, CBaseChainParams::REGTEST}) {
+    for (const auto& chain_name : { CBaseChainParams::MAIN, CBaseChainParams::TESTNET, CBaseChainParams::REGTEST, CBaseChainParams::PREVIEW}) {
         const auto chainParams = CreateChainParams(*m_node.args, chain_name);
         for (int i = 0; i < (int)Consensus::MAX_VERSION_BITS_DEPLOYMENTS; ++i) {
             check_computeblockversion(chainParams->GetConsensus(), static_cast<Consensus::DeploymentPos>(i));

@@ -12,7 +12,14 @@
  * for both bitcoind and bitcoin-qt, to make it harder for attackers to
  * target servers or GUI users specifically.
  */
-const std::string CLIENT_NAME("RincoinCore");
+const std::string CLIENT_NAME("RincoinCommunityCore");
+
+/**
+ * Label of a pre-release build, reported as a user-agent comment by builds with
+ * CLIENT_VERSION_IS_RELEASE == false (see init.cpp). Bump it for every
+ * development build that is handed out; release builds ignore it.
+ */
+const std::string CLIENT_DEV_LABEL("dev.2");
 
 
 #ifdef HAVE_BUILD_INFO

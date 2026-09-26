@@ -79,13 +79,15 @@ BOOST_AUTO_TEST_CASE(rinhash_peer_proto_floor_params)
     struct Case { std::string net; int height; int floor; };
     const Case cases[] = {
         {CBaseChainParams::MAIN,    840000, 70018},
-        {CBaseChainParams::TESTNET,   4200, 70018},
-        {CBaseChainParams::REGTEST,    600, 70018},
-        {CBaseChainParams::PREVIEW,    600, 70018},
+        {CBaseChainParams::TESTNET,   8400, 70018},
+        {CBaseChainParams::REGTEST,    840, 70018},
+        {CBaseChainParams::PREVIEW,    840, 70018},
     };
     for (const auto& c : cases) {
         SelectParams(c.net);
         const auto& consensus = Params().GetConsensus();
+        // The floor rises at the height-840,000 transition (scaled with the halving interval on the test networks).
+        BOOST_CHECK_EQUAL(consensus.nS6bHeight, c.height);
         // 70017 MWEB baseline holds from genesis up to just below the bump height.
         BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(0), 70017);
         BOOST_CHECK_EQUAL(consensus.MinPeerProtoVersionFloorAt(c.height - 1), 70017);

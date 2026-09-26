@@ -31,6 +31,12 @@ class AbortNodeTest(BitcoinTestFramework):
         self.nodes[0].generate(3)
         datadir = get_datadir_path(self.options.tmpdir, 0)
 
+        # The block filter index is on by default and reads undo data from its own thread. Let it
+        # catch up first: if the undo file disappears under it, the node aborts there ("Failed to
+        # write block ... to index") instead of in the reorganization this test is about.
+        self.wait_until(lambda: all(index["synced"] and index["best_block_height"] == 3
+                                    for index in self.nodes[0].getindexinfo().values()))
+
         # Deleting the undo file will result in reorg failure
         os.unlink(os.path.join(datadir, self.chain, 'blocks', 'rev00000.dat'))
 

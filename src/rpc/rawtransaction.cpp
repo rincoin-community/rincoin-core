@@ -7,6 +7,7 @@
 #include <coins.h>
 #include <consensus/validation.h>
 #include <core_io.h>
+#include <chainparams.h>
 #include <index/txindex.h>
 #include <key_io.h>
 #include <merkleblock.h>
@@ -65,6 +66,16 @@ static void TxToJSON(const CTransaction& tx, const uint256 hashBlock, UniValue& 
                 entry.pushKV("confirmations", 0);
         }
     }
+}
+
+/** Rincoin 840k: whether a transaction that confirms in the next block signs with
+ *  sig_fork_id. The RPCs below that check existing signatures (combining raw
+ *  transactions, finalizing, analyzing and updating PSBTs) use the same "confirming
+ *  height = tip + 1" convention as the signing RPCs and the wallet. */
+static bool SigForkIdActiveForNextBlock()
+{
+    const int nSpendHeight = WITH_LOCK(cs_main, return ::ChainActive().Height()) + 1;
+    return nSpendHeight >= Params().GetConsensus().nS6bHeight;
 }
 
 static RPCHelpMan getrawtransaction()
@@ -687,6 +698,10 @@ static RPCHelpMan combinerawtransaction()
         view.SetBackend(viewDummy); // switch back to avoid locking mempool for too long
     }
 
+    // Rincoin 840k: the signatures being merged were made for the next block
+    const SigForkId& sig_fork_id = Params().GetConsensus().sigForkId;
+    const bool sig_fork_id_active = SigForkIdActiveForNextBlock();
+
     // Use CTransaction for the constant parts of the
     // transaction to avoid rehashing.
     const CTransaction txConst(mergedTx);
@@ -702,10 +717,10 @@ static RPCHelpMan combinerawtransaction()
         // ... and merge in other signatures:
         for (const CMutableTransaction& txv : txVariants) {
             if (txv.vin.size() > i) {
-                sigdata.MergeSignatureData(DataFromTransaction(txv, i, coin.out));
+                sigdata.MergeSignatureData(DataFromTransaction(txv, i, coin.out, &sig_fork_id, sig_fork_id_active));
             }
         }
-        ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(&mergedTx, i, coin.out.nValue, 1), coin.out.scriptPubKey, sigdata);
+        ProduceSignature(DUMMY_SIGNING_PROVIDER, MutableTransactionSignatureCreator(&mergedTx, i, coin.out.nValue, sig_fork_id, sig_fork_id_active, 1), coin.out.scriptPubKey, sigdata);
 
         UpdateInput(txin, sigdata);
     }
@@ -807,7 +822,13 @@ static RPCHelpMan signrawtransactionwithkey()
     ParsePrevouts(request.params[2], &keystore, coins);
 
     UniValue result(UniValue::VOBJ);
-    SignTransaction(mtx, &keystore, coins, request.params[3], result);
+    // Rincoin 840k: same "confirming height = tip + 1" convention
+    // as CWallet::SignTransaction() (wallet.cpp) and rpcwallet.cpp's
+    // signrawtransactionwithwallet.
+    const Consensus::Params& fork_params = Params().GetConsensus();
+    const int nSpendHeight = WITH_LOCK(cs_main, return ::ChainActive().Height()) + 1;
+    const bool sig_fork_id_active = nSpendHeight >= fork_params.nS6bHeight;
+    SignTransaction(mtx, &keystore, coins, request.params[3], result, &fork_params.sigForkId, sig_fork_id_active);
     return result;
 },
     };
@@ -1390,7 +1411,7 @@ static RPCHelpMan finalizepsbt()
     bool extract = request.params[1].isNull() || (!request.params[1].isNull() && request.params[1].get_bool());
 
     CMutableTransaction mtx;
-    bool complete = FinalizeAndExtractPSBT(psbtx, mtx);
+    bool complete = FinalizeAndExtractPSBT(psbtx, mtx, &Params().GetConsensus().sigForkId, SigForkIdActiveForNextBlock());
 
     UniValue result(UniValue::VOBJ);
     CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);
@@ -1621,6 +1642,9 @@ static RPCHelpMan utxoupdatepsbt()
     }
 
     // Fill the inputs
+    // Rincoin 840k: partial signatures present in the PSBT were made for the next block
+    const bool sig_fork_id_active = SigForkIdActiveForNextBlock();
+
     for (unsigned int i = 0; i < psbtx.tx->vin.size(); ++i) {
         PSBTInput& input = psbtx.inputs.at(i);
 
@@ -1637,7 +1661,7 @@ static RPCHelpMan utxoupdatepsbt()
         // Update script/keypath information using descriptor data.
         // Note that SignPSBTInput does a lot more than just constructing ECDSA signatures
         // we don't actually care about those here, in fact.
-        SignPSBTInput(public_provider, psbtx, i, /* sighash_type */ 1);
+        SignPSBTInput(public_provider, psbtx, i, /* sighash_type */ 1, nullptr, false, &Params().GetConsensus().sigForkId, sig_fork_id_active);
     }
 
     // Update script/keypath information using descriptor data.
@@ -1801,7 +1825,7 @@ static RPCHelpMan analyzepsbt()
         throw JSONRPCError(RPC_DESERIALIZATION_ERROR, strprintf("TX decode failed %s", error));
     }
 
-    PSBTAnalysis psbta = AnalyzePSBT(psbtx);
+    PSBTAnalysis psbta = AnalyzePSBT(psbtx, &Params().GetConsensus().sigForkId, SigForkIdActiveForNextBlock());
 
     UniValue result(UniValue::VOBJ);
     UniValue inputs_result(UniValue::VARR);

@@ -186,18 +186,20 @@ bool static IsLowDERSignature(const valtype &vchSig, ScriptError* serror) {
     return true;
 }
 
-bool static IsDefinedHashtypeSignature(const valtype &vchSig) {
+bool static IsDefinedHashtypeSignature(const valtype &vchSig, bool sighash_forkid_active) {
     if (vchSig.size() == 0) {
         return false;
     }
     unsigned char nHashType = vchSig[vchSig.size() - 1] & (~(SIGHASH_ANYONECANPAY));
+    // Rincoin 840k: SIGHASH_FORKID is a defined flag only where it is in force.
+    if (sighash_forkid_active) nHashType &= ~SIGHASH_FORKID;
     if (nHashType < SIGHASH_ALL || nHashType > SIGHASH_SINGLE)
         return false;
 
     return true;
 }
 
-bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror) {
+bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror, bool sighash_forkid_active) {
     // Empty signature. Not strictly DER encoded, but allowed to provide a
     // compact way to provide an invalid signature for use with CHECK(MULTI)SIG
     if (vchSig.size() == 0) {
@@ -208,8 +210,14 @@ bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned i
     } else if ((flags & SCRIPT_VERIFY_LOW_S) != 0 && !IsLowDERSignature(vchSig, serror)) {
         // serror is set
         return false;
-    } else if ((flags & SCRIPT_VERIFY_STRICTENC) != 0 && !IsDefinedHashtypeSignature(vchSig)) {
+    } else if ((flags & SCRIPT_VERIFY_STRICTENC) != 0 && !IsDefinedHashtypeSignature(vchSig, sighash_forkid_active)) {
         return set_error(serror, SCRIPT_ERR_SIG_HASHTYPE);
+    }
+    // Rincoin 840k: from the transition every signature that is evaluated has to be a
+    // replay-protected one. This is a consensus rule and does not depend on the flags.
+    // (An empty signature returned above: it stays an ordinary failed check.)
+    if (sighash_forkid_active && !(vchSig.back() & SIGHASH_FORKID)) {
+        return set_error(serror, SCRIPT_ERR_MUST_USE_FORKID);
     }
     return true;
 }
@@ -356,7 +364,7 @@ static bool EvalChecksigPreTapscript(const valtype& vchSig, const valtype& vchPu
             return set_error(serror, SCRIPT_ERR_SIG_FINDANDDELETE);
     }
 
-    if (!CheckSignatureEncoding(vchSig, flags, serror) || !CheckPubKeyEncoding(vchPubKey, flags, sigversion, serror)) {
+    if (!CheckSignatureEncoding(vchSig, flags, serror, checker.SigHashForkIdActive()) || !CheckPubKeyEncoding(vchPubKey, flags, sigversion, serror)) {
         //serror is set
         return false;
     }
@@ -1182,7 +1190,7 @@ bool EvalScript(std::vector<std::vector<unsigned char> >& stack, const CScript& 
                         // Note how this makes the exact order of pubkey/signature evaluation
                         // distinguishable by CHECKMULTISIG NOT if the STRICTENC flag is set.
                         // See the script_(in)valid tests for details.
-                        if (!CheckSignatureEncoding(vchSig, flags, serror) || !CheckPubKeyEncoding(vchPubKey, flags, sigversion, serror)) {
+                        if (!CheckSignatureEncoding(vchSig, flags, serror, checker.SigHashForkIdActive()) || !CheckPubKeyEncoding(vchPubKey, flags, sigversion, serror)) {
                             // serror is set
                             return false;
                         }
@@ -1452,6 +1460,11 @@ void PrecomputedTransactionData::Init(const T& txTo, std::vector<CTxOut>&& spent
         if (uses_bip341_taproot && uses_bip143_segwit) break; // No need to scan further if we already need all.
     }
 
+    // Rincoin 840k: where the transition is in force, pre-SegWit inputs are hashed
+    // with the BIP143 algorithm too, so the shared hashes are worth precomputing for
+    // every transaction that has a signature at all.
+    if (m_sig_fork_id_active) uses_bip143_segwit = true;
+
     if (uses_bip143_segwit || uses_bip341_taproot) {
         // Computations shared between both sighash schemes.
         m_prevouts_single_hash = GetPrevoutsSHA256(txTo);
@@ -1578,7 +1591,18 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
 {
     assert(nIn < txTo.vin.size());
 
-    if (sigversion == SigVersion::WITNESS_V0) {
+    // Rincoin 840k: replay-protected signature hash, as on Bitcoin Gold. Where the
+    // transition is in force (the caller says so through the precomputed data) a
+    // signature with SIGHASH_FORKID is hashed with the BIP143 algorithm whatever the
+    // script version, and the hash type that ends the preimage carries the fork ID in
+    // its upper three bytes. Everything else is hashed as it always was.
+    const bool use_forkid = cache && cache->m_sig_fork_id_active && (nHashType & SIGHASH_FORKID);
+    int nForkHashType = nHashType;
+    if (use_forkid) {
+        nForkHashType |= static_cast<int>(cache->m_sig_fork_id << 8);
+    }
+
+    if (sigversion == SigVersion::WITNESS_V0 || use_forkid) {
         uint256 hashPrevouts;
         uint256 hashSequence;
         uint256 hashOutputs;
@@ -1618,8 +1642,8 @@ uint256 SignatureHash(const CScript& scriptCode, const T& txTo, unsigned int nIn
         ss << hashOutputs;
         // Locktime
         ss << txTo.nLockTime;
-        // Sighash type
-        ss << nHashType;
+        // Sighash type (with the fork ID where it applies)
+        ss << nForkHashType;
 
         return ss.GetHash();
     }
@@ -1654,6 +1678,12 @@ bool GenericTransactionSignatureChecker<T>::VerifySchnorrSignature(Span<const un
 }
 
 template <class T>
+bool GenericTransactionSignatureChecker<T>::SigHashForkIdActive() const
+{
+    return this->txdata && this->txdata->m_sig_fork_id_active;
+}
+
+template <class T>
 bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vector<unsigned char>& vchSigIn, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const
 {
     CPubKey pubkey(vchPubKey);
@@ -1666,6 +1696,12 @@ bool GenericTransactionSignatureChecker<T>::CheckECDSASignature(const std::vecto
         return false;
     int nHashType = vchSig.back();
     vchSig.pop_back();
+
+    // Rincoin 840k: where the transition is in force a signature without SIGHASH_FORKID
+    // is never a valid one. The interpreter has already raised a script error for it in
+    // CheckSignatureEncoding(); this is for callers that check a signature directly (the
+    // signing code does, when it sorts out which signatures of an input it can keep).
+    if (SigHashForkIdActive() && !(nHashType & SIGHASH_FORKID)) return false;
 
     uint256 sighash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion, this->txdata);
 

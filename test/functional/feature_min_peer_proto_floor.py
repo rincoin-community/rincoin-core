@@ -11,9 +11,11 @@ whose height the chain has reached; peers advertising a lower version are
 disconnected during the version handshake (this is independent of the older
 MIN_PEER_PROTO_VERSION = 31800 obsolete-version cutoff).
 
-On regtest the schedule is {{0, 70017}, {600, 70018}}: 70017 is required from
-genesis and the floor rises to 70018 at height 600. LOW_VERSION (70017) is
-therefore accepted below height 600 but rejected at/after it.
+On regtest the schedule is {{0, 70017}, {840, 70018}}: 70017 is required from
+genesis and the floor rises to 70018 at the transition height 840 (4 halving
+intervals of 210). LOW_VERSION (70017) is therefore accepted below height 840 but
+rejected at/after it. The node itself advertises PROTOCOL_VERSION 70019, which is
+above the floor on both sides of the boundary.
 """
 
 from test_framework.messages import msg_version
@@ -22,10 +24,11 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import assert_equal, p2p_port
 
 
-REGTEST_FLOOR_HEIGHT = 600
+REGTEST_FLOOR_HEIGHT = 840
 REGTEST_FLOOR = 70018
 LOW_VERSION = 70017   # one below the floor
 HIGH_VERSION = 70018  # at the floor
+CURRENT_VERSION = 70019  # PROTOCOL_VERSION of this release line
 OBSOLETE_VERSION = 31799  # one below MIN_PEER_PROTO_VERSION (31800)
 
 
@@ -118,6 +121,14 @@ class MinPeerProtoFloorTest(BitcoinTestFramework):
         peers = node.getpeerinfo()
         assert_equal(len(peers), 1)
         assert_equal(peers[0]["version"], HIGH_VERSION)
+        node.disconnect_p2ps()
+
+        self.log.info("At/above floor height: a peer at the current protocol version is accepted")
+        node.add_p2p_connection(FixedVersionPeer(CURRENT_VERSION))
+        peers = node.getpeerinfo()
+        assert_equal(len(peers), 1)
+        assert_equal(peers[0]["version"], CURRENT_VERSION)
+        assert_equal(node.getnetworkinfo()["protocolversion"], CURRENT_VERSION)
 
 
 if __name__ == '__main__':

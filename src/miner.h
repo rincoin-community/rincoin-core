@@ -152,6 +152,9 @@ private:
     uint64_t nBlockMWEBInputs;
     CAmount nFees;
     CTxMemPool::setEntries inBlock;
+    // Rincoin 840k: mempool entries left over from the other side of the transition
+    // height, kept out of the template by ExcludeStaleSigForkTransactions().
+    CTxMemPool::setEntries m_stale_sig_fork;
 
     // Chain context for the block
     int nHeight;
@@ -188,6 +191,10 @@ private:
       * Increments nPackagesSelected / nDescendantsUpdated with corresponding
       * statistics from the package selection (for logging statistics). */
     void addPackageTxs(int& nPackagesSelected, int& nDescendantsUpdated) EXCLUSIVE_LOCKS_REQUIRED(m_mempool.cs);
+    /** Rincoin 840k: find mempool entries that joined under the previous signature regime
+      * and would make the template invalid. Second line of defence behind the mempool
+      * eviction in validation.cpp; normally it finds nothing and costs nothing. */
+    void ExcludeStaleSigForkTransactions() EXCLUSIVE_LOCKS_REQUIRED(cs_main, m_mempool.cs);
 
     // helper functions for addPackageTxs()
     /** Remove confirmed (inBlock) entries from given set */
@@ -214,6 +221,17 @@ private:
 
 /** Modify the extranonce in a block */
 void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned int& nExtraNonce);
+
+/**
+ * Voluntary identification of blocks built from Rincoin Community Core templates:
+ * a script fragment (one push of the ASCII tag "/RCC/") that getblocktemplate
+ * reports as coinbaseaux.flags (BIP22) and that the internal miner places in the
+ * coinbase scriptSig after the BIP34 height and the extra nonce. It names the
+ * development line, not the version. It is not a consensus rule: blocks without
+ * it, with another tag or with a copied tag are equally valid, and it proves
+ * nothing about the software or operator that produced a block.
+ */
+extern const CScript COINBASE_FLAGS;
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev);
 
 /** Update an old GenerateCoinbaseCommitment from CreateNewBlock after the block txs have changed */

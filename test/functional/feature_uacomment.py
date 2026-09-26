@@ -8,7 +8,6 @@ import re
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.test_node import ErrorMatch
-from test_framework.util import assert_equal
 
 
 class UacommentTest(BitcoinTestFramework):
@@ -18,12 +17,14 @@ class UacommentTest(BitcoinTestFramework):
 
     def run_test(self):
         self.log.info("test multiple -uacomment")
-        test_uacomment = self.nodes[0].getnetworkinfo()["subversion"][-12:-1]
-        assert_equal(test_uacomment, "(testnode0)")
+        # A pre-release build puts its development label first, e.g.
+        # "(dev.2; testnode0)"; a release build has only the operator's comments.
+        subversion = self.nodes[0].getnetworkinfo()["subversion"]
+        assert subversion.endswith("(testnode0)/") or subversion.endswith("; testnode0)/"), subversion
 
         self.restart_node(0, ["-uacomment=foo"])
-        foo_uacomment = self.nodes[0].getnetworkinfo()["subversion"][-17:-1]
-        assert_equal(foo_uacomment, "(testnode0; foo)")
+        subversion = self.nodes[0].getnetworkinfo()["subversion"]
+        assert subversion.endswith("(testnode0; foo)/") or subversion.endswith("; testnode0; foo)/"), subversion
 
         self.log.info("test -uacomment max length")
         self.stop_node(0)

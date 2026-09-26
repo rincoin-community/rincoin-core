@@ -35,7 +35,8 @@ class MWEBMempoolTest(BitcoinTestFramework):
 
         self.log.info("Setup MWEB chain")
         setup_mweb_chain(node0)
-        
+        self.sync_blocks()
+
         self.log.info("Pegin some coins")
         node0.sendtoaddress(node0.getnewaddress(address_type='mweb'), 10)
         node0.generate(1)

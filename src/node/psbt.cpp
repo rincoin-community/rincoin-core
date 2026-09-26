@@ -12,7 +12,7 @@
 
 #include <numeric>
 
-PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
+PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx, const SigForkId* sig_fork_id, bool sig_fork_id_active)
 {
     // Go through each input and build status
     PSBTAnalysis result;
@@ -61,7 +61,7 @@ PSBTAnalysis AnalyzePSBT(PartiallySignedTransaction psbtx)
 
             // Figure out what is missing
             SignatureData outdata;
-            bool complete = SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, 1, &outdata);
+            bool complete = SignPSBTInput(DUMMY_SIGNING_PROVIDER, psbtx, i, 1, &outdata, false, sig_fork_id, sig_fork_id_active);
 
             // Things are missing
             if (!complete) {

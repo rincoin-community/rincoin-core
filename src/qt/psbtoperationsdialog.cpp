@@ -4,6 +4,7 @@
 
 #include <qt/psbtoperationsdialog.h>
 
+#include <chainparams.h>
 #include <core_io.h>
 #include <interfaces/node.h>
 #include <key_io.h>
@@ -49,7 +50,7 @@ void PSBTOperationsDialog::openWithPSBT(PartiallySignedTransaction psbtx)
 
     bool complete;
     size_t n_could_sign;
-    FinalizePSBT(psbtx);  // Make sure all existing signatures are fully combined before checking for completeness.
+    FinalizePSBT(psbtx, &Params().GetConsensus().sigForkId, sigForkIdActive());  // Make sure all existing signatures are fully combined before checking for completeness.
     TransactionError err = m_wallet_model->wallet().fillPSBT(SIGHASH_ALL, false /* sign */, true /* bip32derivs */,  m_transaction_data, complete, &n_could_sign);
     if (err != TransactionError::OK) {
         showStatus(tr("Failed to load transaction: %1")
@@ -92,7 +93,7 @@ void PSBTOperationsDialog::signTransaction()
 void PSBTOperationsDialog::broadcastTransaction()
 {
     CMutableTransaction mtx;
-    if (!FinalizeAndExtractPSBT(m_transaction_data, mtx)) {
+    if (!FinalizeAndExtractPSBT(m_transaction_data, mtx, &Params().GetConsensus().sigForkId, sigForkIdActive())) {
         // This is never expected to fail unless we were given a malformed PSBT
         // (e.g. with an invalid signature.)
         showStatus(tr("Unknown error processing transaction."), StatusLevel::ERR);
@@ -170,7 +171,7 @@ std::string PSBTOperationsDialog::renderTransaction(const PartiallySignedTransac
         tx_description.append("<br>");
     }
 
-    PSBTAnalysis analysis = AnalyzePSBT(psbtx);
+    PSBTAnalysis analysis = AnalyzePSBT(psbtx, &Params().GetConsensus().sigForkId, sigForkIdActive());
     tx_description.append(" * ");
     if (!*analysis.fee) {
         // This happens if the transaction is missing input UTXO information.
@@ -233,8 +234,14 @@ size_t PSBTOperationsDialog::couldSignInputs(const PartiallySignedTransaction &p
     return n_signed;
 }
 
+bool PSBTOperationsDialog::sigForkIdActive() const
+{
+    // Same "confirming height = tip + 1" convention as the wallet and the RPCs.
+    return m_client_model->getNumBlocks() + 1 >= Params().GetConsensus().nS6bHeight;
+}
+
 void PSBTOperationsDialog::showTransactionStatus(const PartiallySignedTransaction &psbtx) {
-    PSBTAnalysis analysis = AnalyzePSBT(psbtx);
+    PSBTAnalysis analysis = AnalyzePSBT(psbtx, &Params().GetConsensus().sigForkId, sigForkIdActive());
     size_t n_could_sign = couldSignInputs(psbtx);
 
     switch (analysis.next) {

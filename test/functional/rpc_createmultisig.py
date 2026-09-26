@@ -10,8 +10,10 @@ import json
 import os
 
 from test_framework.authproxy import JSONRPCException
+from test_framework.blocktools import regtest_block_subsidy
 from test_framework.descriptors import descsum_create, drop_origins
 from test_framework.key import ECPubKey, ECKey
+from test_framework.messages import COIN
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_raises_rpc_error,
@@ -118,7 +120,8 @@ class RpcCreateMultiSigTest(BitcoinTestFramework):
 
         height = node0.getblockchaininfo()["blocks"]
         assert 150 < height < 350
-        total = 149 * 50 + (height - 149 - 100) * 25
+        # all coinbases that have matured (the regtest halving interval is 210)
+        total = decimal.Decimal(sum(regtest_block_subsidy(h) for h in range(1, height - 100 + 1))) / COIN
         assert bal1 == 0
         assert bal2 == self.moved
         assert bal0 + bal1 + bal2 == total
