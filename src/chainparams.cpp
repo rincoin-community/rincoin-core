@@ -242,8 +242,11 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
         consensus.vDeployments[Consensus::DEPLOYMENT_MWEB].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
 
-        consensus.nMinimumChainWork = uint256S("0x00");
-        consensus.defaultAssumeValid = uint256S("0x000096bdd6e4613ca89b074ebd6f609aba6fe3f868b34ee79380aa3bc7a8c9db");
+        // Both from block 750,000 (2026-09-22), read from a node that validated the whole
+        // chain itself (assumevalid at the genesis block). Update them for every release, to a
+        // block some thousand blocks below the tip at that time and never at or above 840,000.
+        consensus.nMinimumChainWork = uint256S("0x000000000000000000000000000000000000000000000000000790415d8f4bee");
+        consensus.defaultAssumeValid = uint256S("0x00000001115a0298260b3f6d0ed73a1174aefcc337aaea997c79ce7e7c3d683a"); // 750,000
 
         // Rincoin: no grandfathered block (the upstream value is a Litecoin mainnet block hash).
         consensus.mweb_input_metadata_grandfather_blockhash = uint256();
@@ -505,9 +508,10 @@ public:
             }
         };
         chainTxData = ChainTxData{
-            /* nTime    */ 1743054848, // It's OK to use the same timestamp as RinCoin's Genesis
-            /* nTxCount */ 1,          // Only the Genesis coinbase
-            /* dTxRate  */ 0.0         // Actually, there are no transactions yet
+            // Data from RPC: getchaintxstats 4096 00000001115a0298260b3f6d0ed73a1174aefcc337aaea997c79ce7e7c3d683a
+            /* nTime    */ 1790048235,
+            /* nTxCount */ 836911,
+            /* dTxRate  */ 0.01450442100705602
         };
         
     }
