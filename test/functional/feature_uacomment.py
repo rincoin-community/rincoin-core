@@ -18,7 +18,7 @@ class UacommentTest(BitcoinTestFramework):
     def run_test(self):
         self.log.info("test multiple -uacomment")
         # A pre-release build puts its development label first, e.g.
-        # "(dev.2; testnode0)"; a release build has only the operator's comments.
+        # "(beta.1; testnode0)"; a release build has only the operator's comments.
         subversion = self.nodes[0].getnetworkinfo()["subversion"]
         assert subversion.endswith("(testnode0)/") or subversion.endswith("; testnode0)/"), subversion
 

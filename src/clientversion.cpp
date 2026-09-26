@@ -19,7 +19,7 @@ const std::string CLIENT_NAME("RincoinCommunityCore");
  * CLIENT_VERSION_IS_RELEASE == false (see init.cpp). Bump it for every
  * development build that is handed out; release builds ignore it.
  */
-const std::string CLIENT_DEV_LABEL("dev.2");
+const std::string CLIENT_DEV_LABEL("beta.1");
 
 
 #ifdef HAVE_BUILD_INFO

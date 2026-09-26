@@ -18,17 +18,24 @@ corresponds to the Litecoin `v0.21.4` base.
 
 ---
 
-## 1.2.0 — in development (`v1.2.0-dev.2`)
+## 1.2.0 beta 1 (`v1.2.0-beta.1`)
 
-> **Status: development build, not a release.** `v1.2.0-dev.2` is the label of the
-> current development build of the 1.2.0 line. It exists so that the consensus change
-> below can be reviewed and tested. It is not tagged, there are no release binaries,
-> and it must not be used on mainnet: a pre-release build refuses to start on
-> mainnet unless `RINCOIN_TESTING_ALLOW_MAINNET=1` is set in the environment, and
-> it announces itself as `/RincoinCommunityCore:1.2.0(dev.2)/`. The stable 1.2.0
-> release will carry neither the guard nor the label. (`dev.2` replaces the
-> unpublished `dev.1`: transaction replay protection now has the `SIGHASH_FORKID`
-> form described below.)
+> **Status: beta, for testing only, not for production use.** `v1.2.0-beta.1` is the
+> first public test release of the 1.2.0 line, published so that the consensus change
+> below can be tested by node operators, pools, exchanges and wallet developers before
+> the stable release. Do not run it where a mistake would cost money: not as the node
+> behind a pool, an exchange, a payment service or a wallet with real funds.
+>
+> Like every pre-release build it refuses to start on mainnet unless
+> `RINCOIN_TESTING_ALLOW_MAINNET=1` is set in the environment (deliberately not a
+> command-line or configuration option), and it announces itself as
+> `/RincoinCommunityCore:1.2.0(beta.1)/`. Testnet, the preview network and regtest need
+> no such setting. Below height 840,000 it validates mainnet exactly like 1.1.0, so
+> running it on a copy of a mainnet data directory is a useful test; the stable 1.2.0
+> release will carry neither the guard nor the label.
+>
+> Please report problems at
+> <https://github.com/rincoin-community/rincoin-core/issues>.
 
 ### Consensus change at block height 840,000
 
@@ -130,8 +137,8 @@ a consensus rule, and blocks without it, or with any other marker, are valid.
 
 - `PROTOCOL_VERSION` is 70019. The peer protocol floor is unchanged: 70017 from
   genesis, 70018 from height 840,000.
-- The user agent is `/RincoinCommunityCore:1.2.0/` (with `(dev.2)` in development
-  builds).
+- The user agent is `/RincoinCommunityCore:1.2.0/`, with the pre-release label in
+  pre-release builds (`/RincoinCommunityCore:1.2.0(beta.1)/` for this beta).
 
 ### Checkpoints and block assembly
 

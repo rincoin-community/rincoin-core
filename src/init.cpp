@@ -1473,7 +1473,7 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
     // sanitize comments per BIP-0014, format user agent and check total size
     std::vector<std::string> uacomments;
     // Rincoin: a pre-release build identifies itself in the P2P-visible
-    // subversion string (e.g. "/RincoinCommunityCore:1.2.0(dev.2)/") so that it
+    // subversion string (e.g. "/RincoinCommunityCore:1.2.0(beta.1)/") so that it
     // is recognizable in getpeerinfo and logs. Release builds add nothing.
     if (!CLIENT_VERSION_IS_RELEASE && !CLIENT_DEV_LABEL.empty()) {
         uacomments.push_back(CLIENT_DEV_LABEL);
