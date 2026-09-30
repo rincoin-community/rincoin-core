@@ -18,24 +18,28 @@ corresponds to the Litecoin `v0.21.4` base.
 
 ---
 
-## 1.2.0 beta 1 (`v1.2.0-beta.1`)
+## 1.2.0 release candidate 1 (`v1.2.0rc1`)
 
-> **Status: beta, for testing only, not for production use.** `v1.2.0-beta.1` is the
-> first public test release of the 1.2.0 line, published so that the consensus change
-> below can be tested by node operators, pools, exchanges and wallet developers before
-> the stable release. Do not run it where a mistake would cost money: not as the node
-> behind a pool, an exchange, a payment service or a wallet with real funds.
+> **Status: release candidate.** `v1.2.0rc1` follows `v1.2.0-beta.1` after several days
+> of testing in which no defect was found in the project's tests and none was reported
+> by users. Its consensus rules are the ones of the beta; what changed since then is
+> listed below. It is meant to become the stable 1.2.0 release unless testing of this
+> candidate turns something up.
 >
-> Like every pre-release build it refuses to start on mainnet unless
-> `RINCOIN_TESTING_ALLOW_MAINNET=1` is set in the environment (deliberately not a
-> command-line or configuration option), and it announces itself as
-> `/RincoinCommunityCore:1.2.0(beta.1)/`. Testnet, the preview network and regtest need
-> no such setting. Below height 840,000 it validates mainnet exactly like 1.1.0, so
-> running it on a copy of a mainnet data directory is a useful test; the stable 1.2.0
-> release will carry neither the guard nor the label.
+> It runs on mainnet like any release, without the testing guard of the beta, and
+> announces itself as `/RincoinCommunityCore:1.2.0/`. Operators of pools, exchanges and
+> payment services, and holders of larger amounts, may prefer to wait for the stable
+> release or to run this candidate next to their current node first.
 >
 > Please report problems at
 > <https://github.com/rincoin-community/rincoin-core/issues>.
+
+Changes since `v1.2.0-beta.1`:
+
+- A release build: no mainnet guard, no pre-release label in the user agent.
+- Mainnet `nMinimumChainWork`, `defaultAssumeValid` and chain statistics set from
+  block 750,000: a new node no longer verifies the signatures below that block and
+  does not leave initial block download on a chain with less work.
 
 ### Consensus change at block height 840,000
 
@@ -137,15 +141,15 @@ a consensus rule, and blocks without it, or with any other marker, are valid.
 
 - `PROTOCOL_VERSION` is 70019. The peer protocol floor is unchanged: 70017 from
   genesis, 70018 from height 840,000.
-- The user agent is `/RincoinCommunityCore:1.2.0/`, with the pre-release label in
-  pre-release builds (`/RincoinCommunityCore:1.2.0(beta.1)/` for this beta).
+- The user agent is `/RincoinCommunityCore:1.2.0/`; pre-release builds add their label
+  (`/RincoinCommunityCore:1.2.0(beta.1)/` for the beta).
 
 ### Checkpoints and block assembly
 
 Mainnet checkpoints now run to block `744,278`, 77 entries further than the `435,935` of
-the 1.1 line, generated with `contrib/devtools/generate_checkpoints.py`. `nMinimumChainWork`
-is still unset, so a node that starts from nothing has no work threshold below which it
-refuses a chain; that value belongs to the release that ships for mainnet.
+the 1.1 line, generated with `contrib/devtools/generate_checkpoints.py`.
+`nMinimumChainWork` and `defaultAssumeValid` are set from block 750,000
+(`00000001115a0298…7c3d683a`).
 
 Block assembly now leaves out a mempool transaction signed for the other side of the
 transition height instead of failing on it. The mempool is emptied of such transactions

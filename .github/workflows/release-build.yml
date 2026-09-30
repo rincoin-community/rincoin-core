@@ -343,12 +343,13 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
-          # A tag with a pre-release suffix (v1.2.0-beta.1, v1.2.0-rc1) becomes a draft
-          # pre-release that never replaces the latest stable release; a maintainer checks
-          # the uploaded archives and publishes it. A plain version tag stays a normal release.
-          prerelease: ${{ contains(steps.vars.outputs.tag, '-') || contains(steps.vars.outputs.tag, 'rc') }}
-          draft: ${{ contains(steps.vars.outputs.tag, '-') || contains(steps.vars.outputs.tag, 'rc') }}
-          make_latest: ${{ (contains(steps.vars.outputs.tag, '-') || contains(steps.vars.outputs.tag, 'rc')) && 'false' || 'true' }}
+          # A tag with a pre-release suffix after a dash (v1.2.0-beta.1) becomes a draft
+          # pre-release that never replaces the latest stable release; a maintainer checks the
+          # archives and publishes it. Other tags, release candidates (v1.2.0rc1) included, are
+          # normal releases, and a release published by hand before the build keeps its state.
+          prerelease: ${{ contains(steps.vars.outputs.tag, '-') }}
+          draft: ${{ contains(steps.vars.outputs.tag, '-') }}
+          make_latest: ${{ contains(steps.vars.outputs.tag, '-') && 'false' || 'true' }}
           files: |
             release/*/tarballs/*
             release/*/README.txt

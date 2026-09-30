@@ -142,7 +142,8 @@ noted below.
 | Taproot (height-based)        | start `2,161,152`, timeout `2,370,816` |
 | MWEB                          | never activated (the test networks derive theirs from Litecoin's `2,217,600` / `2,427,264`) |
 | Last checkpoint               | `744,278` |
-| Minimum chain work            | `0x00` (not set) |
+| Minimum chain work            | `0x…0790415d8f4bee`, the work of block `750,000` |
+| Assumed-valid block           | `00000001115a0298260b3f6d0ed73a1174aefcc337aaea997c79ce7e7c3d683a` (`750,000`) |
 
 ### Testnet
 
