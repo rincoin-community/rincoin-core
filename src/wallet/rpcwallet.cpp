@@ -4,6 +4,7 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <amount.h>
+#include <chainparams.h>
 #include <core_io.h>
 #include <interfaces/chain.h>
 #include <key_io.h>
@@ -3532,6 +3533,12 @@ RPCHelpMan signrawtransactionwithwallet()
     if (!wallet) return NullUniValue;
     const CWallet* const pwallet = wallet.get();
 
+    // The signature regime of the height-840,000 transition is taken from the last block the
+    // wallet has processed (CWallet::SignTransaction, FillPSBT). Wait until the wallet has caught
+    // up with the chain, so that a call made right after a block connects signs for the block that
+    // really comes next and not for the one before it.
+    pwallet->BlockUntilSyncedToCurrentChain();
+
     RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VARR, UniValue::VSTR}, true);
 
     CMutableTransaction mtx;
@@ -3558,7 +3565,15 @@ RPCHelpMan signrawtransactionwithwallet()
     // Script verification errors
     std::map<int, std::string> input_errors;
 
-    bool complete = pwallet->SignTransaction(mtx, coins, nHashType, input_errors);
+    // Rincoin 840k: see CWallet::SignTransaction(CMutableTransaction&)
+    // in wallet.cpp for the same "confirming height = tip + 1" convention.
+    const Consensus::Params& fork_params = Params().GetConsensus();
+    const int nSpendHeight = pwallet->GetLastBlockHeight() + 1;
+    const bool sig_fork_id_active = nSpendHeight >= fork_params.nS6bHeight;
+    if ((nHashType & SIGHASH_FORKID) && !sig_fork_id_active) {
+        throw JSONRPCError(RPC_INVALID_PARAMETER, "A FORKID signature hash type can only be used from the transition height on");
+    }
+    bool complete = pwallet->SignTransaction(mtx, coins, nHashType, input_errors, &fork_params.sigForkId, sig_fork_id_active);
     UniValue result(UniValue::VOBJ);
     SignTransactionResultToJSON(mtx, complete, coins, input_errors, result);
     return result;
@@ -4297,6 +4312,12 @@ static RPCHelpMan send()
             if (!wallet) return NullUniValue;
             CWallet* const pwallet = wallet.get();
 
+            // The signature regime of the height-840,000 transition is taken from the last block the
+            // wallet has processed (CWallet::SignTransaction, FillPSBT). Wait until the wallet has caught
+            // up with the chain, so that a call made right after a block connects signs for the block that
+            // really comes next and not for the one before it.
+            pwallet->BlockUntilSyncedToCurrentChain();
+
             UniValue options{request.params[4].isNull() ? UniValue::VOBJ : request.params[4]};
             if (options.exists("conf_target") || options.exists("estimate_mode")) {
                 if (!request.params[1].isNull() || !request.params[2].isNull()) {
@@ -4366,7 +4387,9 @@ static RPCHelpMan send()
             }
 
             CMutableTransaction mtx;
-            complete = FinalizeAndExtractPSBT(psbtx, mtx);
+            // Rincoin 840k: same "confirming height = tip + 1" convention as FillPSBT above
+            const Consensus::Params& fork_params = Params().GetConsensus();
+            complete = FinalizeAndExtractPSBT(psbtx, mtx, &fork_params.sigForkId, pwallet->GetLastBlockHeight() + 1 >= fork_params.nS6bHeight);
 
             UniValue result(UniValue::VOBJ);
 
@@ -4500,6 +4523,12 @@ static RPCHelpMan walletprocesspsbt()
     std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
     if (!wallet) return NullUniValue;
     const CWallet* const pwallet = wallet.get();
+
+    // The signature regime of the height-840,000 transition is taken from the last block the
+    // wallet has processed (CWallet::SignTransaction, FillPSBT). Wait until the wallet has caught
+    // up with the chain, so that a call made right after a block connects signs for the block that
+    // really comes next and not for the one before it.
+    pwallet->BlockUntilSyncedToCurrentChain();
 
     RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VBOOL, UniValue::VSTR});
 

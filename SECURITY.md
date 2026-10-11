@@ -64,7 +64,7 @@ gpg --verify SHA256SUMS.txt.asc SHA256SUMS.txt
 sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
-Release tags in this repository are signed with the same key, so `git verify-tag v1.1.0` checks the source independently of the published binaries.
+Release tags in this repository are signed with the same key, so `git verify-tag v1.2.0` checks the source independently of the published binaries.
 
 If a signature does not verify, do not run the binary, and please report it to the address above.
 
@@ -72,8 +72,10 @@ If a signature does not verify, do not run the binary, and please report it to t
 
 | Version | Status |
 |---------|--------|
-| 1.1.0 | Supported. Terminal release: it validates normally below block height 840,000 and stops there by design. |
-| 1.0.x | Not supported. Upgrade to 1.1.0, which is a drop-in replacement. |
+| 1.2.0 | Supported. The release for the consensus transition at block height 840,000. |
+| 1.2.0 pre-releases (`v1.2.0-beta.1`, `v1.2.0rc1`) | Superseded. Upgrade to 1.2.0, which is a drop-in replacement. |
+| 1.1.0 | Supported until block height 840,000. Terminal release: it validates normally below that height and stops there by design. Upgrade to 1.2.0, which is a drop-in replacement, before the height. |
+| 1.0.x | Not supported. Upgrade to 1.2.0. |
 | `dev` branch | Not a release. Fixes land here, but it carries no support commitment. |
 
 The halt at block height 840,000 in the 1.1.0 release is **intended behaviour, not a vulnerability**. It exists so that a node cannot silently follow consensus rules the project has not adopted. Reports that a 1.1.0 node stops at that height will be answered, but they are not security issues. The reasoning is set out in the [v1.1.0 release notes](https://github.com/rincoin-community/rincoin-core/releases/tag/v1.1.0).

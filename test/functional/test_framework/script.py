@@ -619,6 +619,13 @@ def FindAndDelete(script, sig):
         r += script[last_sop_idx:]
     return CScript(r)
 
+# Rincoin: from the height-840,000 transition on (height 840 on regtest) every ECDSA signature
+# is a replay-protected one, as on Bitcoin Gold: its hash type has SIGHASH_FORKID set, and its
+# digest is the BIP143 one for pre-SegWit inputs too, with the fork ID in the upper three bytes
+# of the serialized hash type. See ForkIdSignatureHash() below.
+SIGHASH_FORKID = 0x40
+SIG_FORK_ID_840K = 840
+
 def LegacySignatureHash(script, txTo, inIdx, hashtype):
     """Consensus-correct SignatureHash
 
@@ -673,7 +680,9 @@ def LegacySignatureHash(script, txTo, inIdx, hashtype):
 # Performance optimization probably not necessary for python tests, however.
 # Note that this corresponds to sigversion == 1 in EvalScript, which is used
 # for version 0 witnesses.
-def SegwitV0SignatureHash(script, txTo, inIdx, hashtype, amount):
+def SegwitV0SignatureHash(script, txTo, inIdx, hashtype, amount, fork_id=None):
+    """BIP143. With fork_id, the hash type that ends the preimage carries it (see
+    ForkIdSignatureHash); the hash type byte itself still selects the mode."""
 
     hashPrevouts = 0
     hashSequence = 0
@@ -710,9 +719,16 @@ def SegwitV0SignatureHash(script, txTo, inIdx, hashtype, amount):
     ss += struct.pack("<I", txTo.vin[inIdx].nSequence)
     ss += ser_uint256(hashOutputs)
     ss += struct.pack("<i", txTo.nLockTime)
-    ss += struct.pack("<I", hashtype)
+    ss += struct.pack("<I", hashtype if fork_id is None else hashtype | (fork_id << 8))
 
     return hash256(ss)
+
+def ForkIdSignatureHash(script, txTo, inIdx, hashtype, amount, fork_id=SIG_FORK_ID_840K):
+    """Rincoin: the digest of a replay-protected signature, for pre-SegWit and SegWit v0
+    inputs alike. hashtype has to include SIGHASH_FORKID, and it is also the byte that is
+    appended to the signature."""
+    assert hashtype & SIGHASH_FORKID
+    return SegwitV0SignatureHash(script, txTo, inIdx, hashtype, amount, fork_id)
 
 class TestFrameworkScript(unittest.TestCase):
     def test_bn2vch(self):

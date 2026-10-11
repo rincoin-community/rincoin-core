@@ -23,6 +23,7 @@
 #include <mw/node/CoinsView.h>
 #include <mweb/mweb_db.h>
 #include <mweb/mweb_node.h>
+#include <mweb/mweb_policy.h>
 #include <node/ui_interface.h>
 #include <optional.h>
 #include <policy/fees.h>
@@ -109,6 +110,10 @@ bool CBlockIndexWorkComparator::operator()(const CBlockIndex *pa, const CBlockIn
 }
 
 ChainstateManager g_chainman;
+
+// Serialize block storage and activation so concurrent same-hash bodies
+// cannot connect one representation while retaining another on disk.
+static Mutex g_process_new_block_mutex;
 
 CChainState& ChainstateActive()
 {
@@ -374,11 +379,78 @@ static bool IsCurrentForFeeEstimation() EXCLUSIVE_LOCKS_REQUIRED(cs_main)
  * and instead just erase from the mempool as needed.
  */
 
+/** Rincoin 840k: a reorganization moved the tip across height nS6bHeight - 1, so
+ *  UpdateMempoolForReorg() must re-check the mempool against the signature-hash
+ *  regime of the new next block. */
+static bool g_sigfork_boundary_touched GUARDED_BY(cs_main) = false;
+
+bool CheckInputsForSigForkRegime(const CTransaction& tx, const CCoinsViewCache& view, const Consensus::Params& consensus, int nHeight)
+{
+    PrecomputedTransactionData txdata;
+    txdata.SetSigForkId(consensus.sigForkId, nHeight >= consensus.nS6bHeight);
+    TxValidationState state;
+    return CheckInputScripts(tx, state, view, STANDARD_SCRIPT_VERIFY_FLAGS, /* cacheSigStore */ false,
+                             /* cacheFullScriptStore */ false, txdata);
+}
+
+/**
+ * Rincoin 840k: drop every mempool transaction whose scripts do not verify
+ * under the signature-hash regime of the next block.
+ *
+ * The regime of the next block changes exactly when the tip moves onto or off
+ * height nS6bHeight - 1. Transactions accepted before that move were checked
+ * under the other regime; most of them can never be mined now, and a single one
+ * left behind would make every block template fail its validity check. They are
+ * removed here, together with their descendants, with the usual wallet
+ * notifications. Transactions without signature checks are unaffected and stay.
+ *
+ * Must run only while the mempool is consistent: directly after a block is
+ * connected outside a reorganization, or at the end of UpdateMempoolForReorg().
+ * In the middle of a reorganization mempool entries may spend outputs of
+ * transactions that are still waiting in the disconnect pool.
+ */
+static void RemoveForSigForkBoundary(CTxMemPool& pool, CChainState& chainstate, const CChainParams& chainparams) EXCLUSIVE_LOCKS_REQUIRED(cs_main, pool.cs)
+{
+    AssertLockHeld(cs_main);
+    AssertLockHeld(pool.cs);
+    if (pool.size() == 0) return;
+
+    const Consensus::Params& consensus = chainparams.GetConsensus();
+    const int next_height = chainstate.m_chain.Height() + 1;
+
+    CCoinsViewMemPool viewMemPool(&chainstate.CoinsTip(), pool);
+    CCoinsViewCache view(&viewMemPool);
+
+    std::vector<CTransactionRef> vRemove;
+    for (const CTxMemPoolEntry& entry : pool.mapTx) {
+        const CTransaction& tx = entry.GetTx();
+        if (tx.IsMWEBOnly()) continue;
+        // Only called when the mempool is consistent, so every input is either in the
+        // UTXO set or created by another mempool transaction. Be defensive anyway:
+        // a transaction with unavailable inputs is left to the regular reorg handling.
+        if (!view.HaveInputs(tx)) continue;
+        if (!CheckInputsForSigForkRegime(tx, view, consensus, next_height)) {
+            vRemove.push_back(entry.GetSharedTx());
+        }
+    }
+    for (const CTransactionRef& tx : vRemove) {
+        pool.removeRecursive(*tx, MemPoolRemovalReason::REORG);
+    }
+    if (!vRemove.empty()) {
+        LogPrintf("Removed %u mempool transaction(s) signed for the other side of the height-%d transition\n", vRemove.size(), consensus.nS6bHeight);
+    }
+}
+
 static void UpdateMempoolForReorg(CTxMemPool& mempool, DisconnectedBlockTransactions& disconnectpool, bool fAddToMempool) EXCLUSIVE_LOCKS_REQUIRED(cs_main, mempool.cs)
 {
     AssertLockHeld(cs_main);
     AssertLockHeld(mempool.cs);
-    if (disconnectpool.queuedTx.empty()) return;
+    const bool fSigForkBoundary = g_sigfork_boundary_touched;
+    g_sigfork_boundary_touched = false;
+    if (disconnectpool.queuedTx.empty()) {
+        if (fSigForkBoundary) RemoveForSigForkBoundary(mempool, ::ChainstateActive(), Params());
+        return;
+    }
     std::vector<uint256> vHashUpdate;
     // disconnectpool's insertion_order index sorts the entries from
     // oldest to newest, but the oldest entry will be the last tx from the
@@ -411,6 +483,10 @@ static void UpdateMempoolForReorg(CTxMemPool& mempool, DisconnectedBlockTransact
 
     // We also need to remove any now-immature transactions
     mempool.removeForReorg(&::ChainstateActive().CoinsTip(), ::ChainActive().Tip()->nHeight + 1, STANDARD_LOCKTIME_VERIFY_FLAGS);
+    // Rincoin 840k: and anything signed for the other side of the transition, if
+    // this reorganization crossed it (resurrected transactions were already
+    // checked against the new next block by AcceptToMemoryPool above).
+    if (fSigForkBoundary) RemoveForSigForkBoundary(mempool, ::ChainstateActive(), Params());
     // Re-limit mempool size, in case we added any transactions
     LimitMempoolSize(mempool, gArgs.GetArg("-maxmempool", DEFAULT_MAX_MEMPOOL_SIZE) * 1000000, std::chrono::hours{gArgs.GetArg("-mempoolexpiry", DEFAULT_MEMPOOL_EXPIRY)});
 }
@@ -584,6 +660,18 @@ bool MemPoolAccept::PreChecks(ATMPArgs& args, Workspace& ws)
     // MWEB: Don't accept MWEB transactions before activation.
     if (tx.HasMWEBTx() && !IsMWEBEnabled(::ChainActive().Tip(), args.m_chainparams.GetConsensus())) {
         return state.Invalid(TxValidationResult::TX_NOT_STANDARD, "mweb-before-activation");
+    }
+
+    // MWEB: Reject oversized MWEB transactions under relay policy *before* the
+    // expensive signature/rangeproof verification in MWEB::Node::CheckTransaction.
+    // The consensus limits allow a single tx to carry a whole block's worth of
+    // inputs/outputs; verifying that for an unpaid, invalid tx would be a
+    // cheap-to-relay, expensive-to-verify DoS.
+    if (fRequireStandard && tx.HasMWEBTx()) {
+        std::string mweb_reason;
+        if (!MWEB::Policy::CheckWeight(tx, mweb_reason)) {
+            return state.Invalid(TxValidationResult::TX_NOT_STANDARD, mweb_reason);
+        }
     }
 
     // MWEB: Check MWEB tx
@@ -967,6 +1055,30 @@ bool MemPoolAccept::PolicyScriptChecks(ATMPArgs& args, Workspace& ws, Precompute
     // Check input scripts and signatures.
     // This is done last to help prevent CPU exhaustion denial-of-service attacks.
     if (!CheckInputScripts(tx, state, m_view, scriptVerifyFlags, true, false, txdata)) {
+        // Rincoin 840k: a transaction whose scripts fail under the signature-hash
+        // regime of the next block but pass under the other regime is not a broken
+        // or malicious transaction. It was signed for the other side of the
+        // height-840,000 transition: residue from before it, or a wallet or peer
+        // that is a block ahead of us right at the boundary. Reject it with the
+        // non-punitive TX_RECENT_CONSENSUS_CHANGE so the relaying peer is not
+        // penalized; it still never enters the mempool, so it cannot stall block
+        // assembly.
+        {
+            PrecomputedTransactionData other_txdata = txdata;
+            other_txdata.SetSigForkId(txdata.m_sig_fork_id, !txdata.m_sig_fork_id_active);
+            TxValidationState state_shadow;
+            if (CheckInputScripts(tx, state_shadow, m_view, scriptVerifyFlags, /* cacheSigStore */ false, /* cacheFullScriptStore */ false, other_txdata)) {
+                if (txdata.m_sig_fork_id_active) {
+                    state.Invalid(TxValidationResult::TX_RECENT_CONSENSUS_CHANGE,
+                            "old-style-sig-fork-id", "signatures are valid only under the signature hash used before the transition height");
+                } else {
+                    state.Invalid(TxValidationResult::TX_RECENT_CONSENSUS_CHANGE,
+                            "new-style-sig-fork-id", "signatures are valid only under the signature hash used from the transition height");
+                }
+                return false;
+            }
+        }
+
         // SCRIPT_VERIFY_CLEANSTACK requires SCRIPT_VERIFY_WITNESS, so we
         // need to turn both off, and compare against just turning off CLEANSTACK
         // to see if the failure is specifically due to witness validation.
@@ -1076,6 +1188,16 @@ bool MemPoolAccept::AcceptSingleTransaction(const CTransactionRef& ptx, ATMPArgs
     // checks first and avoid hashing and signature verification unless those
     // checks pass, to mitigate CPU exhaustion denial-of-service attacks.
     PrecomputedTransactionData txdata;
+
+    // Rincoin 840k: height-840,000 sig_fork_id activation, keyed off
+    // the height this transaction would confirm at if accepted now -- the
+    // same "confirming height" semantics CheckTxInputs() already uses via
+    // GetSpendHeight() above in PreChecks().
+    {
+        const Consensus::Params& fork_params = args.m_chainparams.GetConsensus();
+        const int nSpendHeight = GetSpendHeight(m_view);
+        txdata.SetSigForkId(fork_params.sigForkId, nSpendHeight >= fork_params.nS6bHeight);
+    }
 
     if (!PolicyScriptChecks(args, workspace, txdata)) return false;
 
@@ -1268,8 +1390,41 @@ bool ReadRawBlockFromDisk(std::vector<uint8_t>& block, const CBlockIndex* pindex
     return ReadRawBlockFromDisk(block, block_pos, message_start);
 }
 
+/**
+ * Maximum block subsidy from the height-840,000 transition onward (S6/b): four
+ * fixed-value phases (4 / 2 / 1 / 0.6 RIN) followed by zero from a terminal
+ * height derived from the 168,000,000 RIN issuance ceiling. The normative
+ * description and frozen vectors are in
+ * analysis/Rincoin_840k_S6B_Consensus_Change_Specification of the consensus-840k
+ * repository; the per-network table is built by SetS6bSchedule() in
+ * chainparams.cpp.
+ *
+ * A plain scan over a small sorted table (see Consensus::Params::S6bSubsidyPhase):
+ * the terminal phase is just another row with nSubsidy == 0, and the cost does
+ * not depend on the height.
+ */
+static CAmount GetBlockSubsidyS6b(int nHeight, const Consensus::Params& consensusParams)
+{
+    const auto& phases = consensusParams.vS6bSubsidyPhases;
+    assert(!phases.empty());
+    assert(phases.front().nStartHeight == consensusParams.nS6bHeight);
+
+    CAmount nSubsidy = 0;
+    for (const auto& phase : phases) {
+        if (phase.nStartHeight > nHeight) {
+            break;
+        }
+        nSubsidy = phase.nSubsidy;
+    }
+    return nSubsidy;
+}
+
 CAmount GetBlockSubsidy(int nHeight, const Consensus::Params& consensusParams)
 {
+    if (nHeight >= consensusParams.nS6bHeight) {
+        return GetBlockSubsidyS6b(nHeight, consensusParams);
+    }
+
     int halvings = nHeight / consensusParams.nSubsidyHalvingInterval;
     // Force block reward to zero when right shift is undefined.
     if (halvings >= 64)
@@ -1595,7 +1750,17 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState &state, const C
     // transaction).
     uint256 hashCacheEntry;
     CSHA256 hasher = g_scriptExecutionCacheHasher;
-    hasher.Write(tx.GetWitnessHash().begin(), 32).Write((unsigned char*)&flags, sizeof(flags)).Finalize(hashCacheEntry.begin());
+    hasher.Write(tx.GetWitnessHash().begin(), 32).Write((unsigned char*)&flags, sizeof(flags));
+    // Rincoin 840k: the signature-hash regime of the height-840,000 transition
+    // changes which signatures are valid without changing `flags` (it is not a
+    // SCRIPT_VERIFY_* toggle), so two calls with an identical (witness_hash, flags)
+    // pair can require different results depending on whether the confirming
+    // height is >= nS6bHeight. Fold the regime into the cache key, or a script
+    // check cached as valid on one side of the transition could produce a stale
+    // hit on the other (after a reorganization across it, or in tests that move
+    // the tip back and forth on purpose).
+    const unsigned char fork_id_active_byte = txdata.m_sig_fork_id_active ? 1 : 0;
+    hasher.Write(&fork_id_active_byte, 1).Finalize(hashCacheEntry.begin());
     AssertLockHeld(cs_main); //TODO: Remove this requirement by making CuckooCache not require external locks
     if (g_scriptExecutionCache.contains(hashCacheEntry, !cacheFullScriptStore)) {
         return true;
@@ -1841,7 +2006,7 @@ DisconnectResult CChainState::DisconnectBlock(const CBlock& block, const CBlockI
         try {
             view.GetMWEBCacheView()->UndoBlock(blockUndo.mwundo);
         } catch (const std::exception& e) {
-            error("DisconnectBlock(): Failed to disconnect MWEB block");
+            error("DisconnectBlock(): Failed to disconnect MWEB block: %s", e.what());
             return DISCONNECT_FAILED;
         }
     }
@@ -2192,13 +2357,21 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
 
     CBlockUndo blockundo;
 
-    // Precomputed transaction data pointers must not be invalidated
-    // until after `control` has run the script checks (potentially
-    // in multiple threads). Preallocate the vector size so a new allocation
-    // doesn't invalidate pointers into the vector, and keep txsdata in scope
-    // for as long as `control`.
-    CCheckQueueControl<CScriptCheck> control(fScriptChecks && g_parallel_script_checks ? &scriptcheckqueue : nullptr);
+    // CScriptCheck objects may hold pointers into txsdata while running in the
+    // script-check queue. txsdata must therefore outlive the CCheckQueueControl
+    // object, whose destructor waits for queued checks to finish on early returns.
+    // Declare txsdata before control so destruction happens in the safe order.
     std::vector<PrecomputedTransactionData> txsdata(block.vtx.size());
+
+    // Rincoin 840k: height-840,000 sig_fork_id activation. Applies
+    // to every non-coinbase input's sighash (coinbase transactions are
+    // never signature-checked, so index 0 is left inactive for clarity).
+    const bool fSigForkIdActive = pindex->nHeight >= chainparams.GetConsensus().nS6bHeight;
+    for (unsigned int i = 1; i < block.vtx.size(); i++) {
+        txsdata[i].SetSigForkId(chainparams.GetConsensus().sigForkId, fSigForkIdActive);
+    }
+
+    CCheckQueueControl<CScriptCheck> control(fScriptChecks && g_parallel_script_checks ? &scriptcheckqueue : nullptr);
 
     std::vector<int> prevheights;
     CAmount nFees = 0;
@@ -2279,6 +2452,18 @@ bool CChainState::ConnectBlock(const CBlock& block, BlockValidationState& state,
     if (block.vtx[0]->GetValueOut() > blockReward) {
         LogPrintf("ERROR: ConnectBlock(): coinbase pays too much (actual=%d vs limit=%d)\n", block.vtx[0]->GetValueOut(), blockReward);
         return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-amount");
+    }
+
+    // Rincoin 840k: the transition block itself must claim exactly the maximum
+    // subsidy plus all fees. Software still applying the historical halving
+    // permits a lower maximum at this height, so it rejects this block and
+    // everything built on it; the two rule sets cannot share a continuation.
+    // Every other height keeps the plain upper bound above (underclaiming stays
+    // valid). Integer base units throughout; nFees is the consensus fee total
+    // accumulated above.
+    if (pindex->nHeight == chainparams.GetConsensus().nS6bHeight && block.vtx[0]->GetValueOut() != blockReward) {
+        LogPrintf("ERROR: ConnectBlock(): transition block must claim exactly subsidy plus fees (actual=%d vs required=%d)\n", block.vtx[0]->GetValueOut(), blockReward);
+        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS, "bad-cb-amount-transition");
     }
 
     if (!control.Wait()) {
@@ -2638,6 +2823,11 @@ bool CChainState::DisconnectTip(BlockValidationState& state, const CChainParams&
     m_chain.SetTip(pindexDelete->pprev);
 
     UpdateTip(m_mempool, pindexDelete->pprev, chainparams);
+    // Rincoin 840k: the next block just moved back below the transition height; the
+    // mempool is re-checked once it is consistent again (UpdateMempoolForReorg).
+    if (pindexDelete->nHeight + 1 == chainparams.GetConsensus().nS6bHeight) {
+        g_sigfork_boundary_touched = true;
+    }
     // Let wallets know transactions went from 1-confirmed to
     // 0-confirmed or conflicted:
     GetMainSignals().BlockDisconnected(pblock, pindexDelete);
@@ -2723,8 +2913,14 @@ bool CChainState::ConnectTip(BlockValidationState& state, const CChainParams& ch
         bool rv = ConnectBlock(blockConnecting, state, pindexNew, view, chainparams);
         GetMainSignals().BlockChecked(blockConnecting, state);
         if (!rv) {
-            if (state.IsInvalid())
+            if (state.IsInvalid()) {
                 InvalidBlockFound(pindexNew, state);
+                if (state.GetResult() == BlockValidationResult::BLOCK_MUTATED) {
+                    // The same block hash may be valid with different
+                    // non-committed data, so do not retain these bytes.
+                    EraseBlockData(pindexNew, /*preserve_tx_metadata=*/true);
+                }
+            }
             return error("%s: ConnectBlock %s failed, %s", __func__, pindexNew->GetBlockHash().ToString(), state.ToString());
         }
         nTime3 = GetTimeMicros(); nTimeConnectTotal += nTime3 - nTime2;
@@ -2745,10 +2941,28 @@ bool CChainState::ConnectTip(BlockValidationState& state, const CChainParams& ch
     // Update m_chain & related variables.
     m_chain.SetTip(pindexNew);
     UpdateTip(m_mempool, pindexNew, chainparams);
+    // Rincoin 840k: the next block is the first one at the transition height. Outside
+    // a reorganization the mempool is consistent here; during one the check is
+    // deferred to UpdateMempoolForReorg().
+    if (pindexNew->nHeight + 1 == chainparams.GetConsensus().nS6bHeight) {
+        if (disconnectpool.queuedTx.empty()) {
+            RemoveForSigForkBoundary(m_mempool, *this, chainparams);
+        } else {
+            g_sigfork_boundary_touched = true;
+        }
+    }
 
     int64_t nTime6 = GetTimeMicros(); nTimePostConnect += nTime6 - nTime5; nTimeTotal += nTime6 - nTime1;
     LogPrint(BCLog::BENCH, "  - Connect postprocess: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime5) * MILLI, nTimePostConnect * MICRO, nTimePostConnect * MILLI / nBlocksTotal);
     LogPrint(BCLog::BENCH, "- Connect block: %.2fms [%.2fs (%.2fms/blk)]\n", (nTime6 - nTime1) * MILLI, nTimeTotal * MICRO, nTimeTotal * MILLI / nBlocksTotal);
+
+    // The MWEB body is not committed by the block hash and is only fully
+    // checked while connecting it to the MWEB UTXO set. AcceptBlock therefore
+    // defers this signal for MWEB blocks until the exact body has connected.
+    // Signal before moving pthisBlock into the connection trace.
+    if (!IsInitialBlockDownload() && !blockConnecting.mweb_block.IsNull()) {
+        GetMainSignals().NewPoWValidBlock(pindexNew, pthisBlock);
+    }
 
     connectTrace.BlockConnected(pindexNew, std::move(pthisBlock));
     return true;
@@ -3363,6 +3577,7 @@ void CChainState::ReceivedBlockTransactions(const CBlock& block, CBlockIndex* pi
     pindexNew->nFile = pos.nFile;
     pindexNew->nDataPos = pos.nPos;
     pindexNew->nUndoPos = 0;
+    pindexNew->nStatus &= ~BLOCK_DISCARDED_MUTATED_DATA;
     pindexNew->nStatus |= BLOCK_HAVE_DATA;
     if (IsWitnessEnabled(pindexNew->pprev, consensusParams)) {
         pindexNew->nStatus |= BLOCK_OPT_WITNESS;
@@ -3614,6 +3829,7 @@ std::vector<unsigned char> GenerateCoinbaseCommitment(CBlock& block, const CBloc
             block.vtx[0] = MakeTransactionRef(std::move(tx));
         }
     }
+
     UpdateUncommittedBlockStructures(block, pindexPrev, consensusParams);
     return commitment;
 }
@@ -4155,7 +4371,7 @@ bool ChainstateManager::ProcessNewBlockHeaders(const std::vector<CBlockHeader>& 
         auto batch_end = std::chrono::steady_clock::now();
         int64_t batch_us = std::chrono::duration_cast<std::chrono::microseconds>(batch_end - batch_start).count();
         if (hdr_count > 0) {
-            LogPrintf("HEADERSYNC-PERF: batch=%d new=%d dup=%d total=%lldus "
+            LogPrint(BCLog::BENCH, "HEADERSYNC-PERF: batch=%d new=%d dup=%d total=%lldus "
                       "phase1=%lldus(%.1f%%) dgw_parallel=%lldus(%.1f%%) "
                       "per_hdr=%lldus\n",
                       hdr_count, new_count, dup_count, batch_us,
@@ -4229,7 +4445,9 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
     // and unrequested blocks.
     if (fAlreadyHave) return true;
     if (!fRequested) {  // If we didn't ask for it:
-        if (pindex->nTx != 0) return true;    // This is a previously-processed block that was pruned
+        if (pindex->nTx != 0 && !(pindex->nStatus & BLOCK_DISCARDED_MUTATED_DATA)) {
+            return true; // This is a previously-processed block that was pruned
+        }
         if (!fHasMoreOrSameWork) return true; // Don't process less-work chains
         if (fTooFarAhead) return true;        // Block height is too high
 
@@ -4250,8 +4468,10 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
     }
 
     // Header is valid/has work, merkle tree and segwit merkle tree are good...RELAY NOW
-    // (but if it does not build on our best tip, let the SendMessages loop relay it)
-    if (!IsInitialBlockDownload() && m_chain.Tip() == pindex->pprev)
+    // (but if it does not build on our best tip, let the SendMessages loop relay it).
+    // MWEB blocks are deferred to ConnectTip because their bodies are not
+    // committed by the block hash and require UTXO-dependent validation.
+    if (!IsInitialBlockDownload() && m_chain.Tip() == pindex->pprev && block.mweb_block.IsNull())
         GetMainSignals().NewPoWValidBlock(pindex, pblock);
 
     // Write block to history file
@@ -4277,6 +4497,7 @@ bool CChainState::AcceptBlock(const std::shared_ptr<const CBlock>& pblock, Block
 bool ChainstateManager::ProcessNewBlock(const CChainParams& chainparams, const std::shared_ptr<const CBlock> pblock, bool fForceProcessing, bool* fNewBlock)
 {
     AssertLockNotHeld(cs_main);
+    LOCK(g_process_new_block_mutex);
 
     {
         CBlockIndex *pindex = nullptr;
@@ -4819,6 +5040,16 @@ bool CChainState::RollforwardBlock(const CBlockIndex* pindex, CCoinsViewCache& i
         // Pass check = true as every addition may be an overwrite.
         AddCoins(inputs, *tx, pindex->nHeight, true);
     }
+
+    if (!block.mweb_block.IsNull()) {
+        // ReplayBlocks recovers after undo data was already written, so the
+        // MWEB undo produced here is only needed transiently while applying state.
+        CBlockUndo blockundo;
+        BlockValidationState state;
+        if (!MWEB::Node::ConnectBlock(block, params.GetConsensus(), pindex->pprev, blockundo, *inputs.GetMWEBCacheView(), state)) {
+            return error("ReplayBlock(): MWEB ConnectBlock failed at %d, hash=%s (%s)", pindex->nHeight, pindex->GetBlockHash().ToString(), state.ToString());
+        }
+    }
     return true;
 }
 
@@ -4853,6 +5084,10 @@ bool CChainState::ReplayBlocks(const CChainParams& params)
         pindexFork = LastCommonAncestor(pindexOld, pindexNew);
         assert(pindexFork != nullptr);
     }
+
+    // DB_BEST_BLOCK is erased while DB_HEAD_BLOCKS marks an interrupted flush, so
+    // initialize the MWEB replay cache from the old head tracked in DB_HEAD_BLOCKS.
+    cache.GetMWEBCacheView()->SetBestHeader(pindexOld ? pindexOld->mweb_header : nullptr);
 
     // Rollback along the old branch.
     while (pindexOld != pindexFork) {
@@ -4889,24 +5124,31 @@ bool CChainState::ReplayBlocks(const CChainParams& params)
     return true;
 }
 
-//! Helper for CChainState::RewindBlockIndex
-void CChainState::EraseBlockData(CBlockIndex* index)
+//! Discard stored block data, optionally retaining validated transaction metadata.
+void CChainState::EraseBlockData(CBlockIndex* index, bool preserve_tx_metadata)
 {
     AssertLockHeld(cs_main);
     assert(!m_chain.Contains(index)); // Make sure this block isn't active
 
-    // Reduce validity
-    index->nStatus = std::min<unsigned int>(index->nStatus & BLOCK_VALID_MASK, BLOCK_VALID_TREE) | (index->nStatus & ~BLOCK_VALID_MASK);
+    if (preserve_tx_metadata) {
+        // Keep descendants linked without walking the entire block index. The
+        // block passed transaction validation; only its mutable serialization
+        // needs to be replaced.
+        index->nStatus |= BLOCK_DISCARDED_MUTATED_DATA;
+    } else {
+        // Reduce validity.
+        index->nStatus = std::min<unsigned int>(index->nStatus & BLOCK_VALID_MASK, BLOCK_VALID_TREE) | (index->nStatus & ~BLOCK_VALID_MASK);
+        index->nStatus &= ~BLOCK_DISCARDED_MUTATED_DATA;
+        index->nTx = 0;
+        index->nChainTx = 0;
+        index->nSequenceId = 0;
+    }
     // Remove have-data flags.
     index->nStatus &= ~(BLOCK_HAVE_DATA | BLOCK_HAVE_UNDO);
     // Remove storage location.
     index->nFile = 0;
     index->nDataPos = 0;
     index->nUndoPos = 0;
-    // Remove various other things
-    index->nTx = 0;
-    index->nChainTx = 0;
-    index->nSequenceId = 0;
     // Make sure it gets written.
     setDirtyBlockIndex.insert(index);
     // Update indexes
@@ -5287,12 +5529,19 @@ void CChainState::CheckBlockIndex(const Consensus::Params& consensusParams)
         // VALID_TRANSACTIONS is equivalent to nTx > 0 for all nodes (whether or not pruning has occurred).
         // HAVE_DATA is only equivalent to nTx > 0 (or VALID_TRANSACTIONS) if no pruning has occurred.
         if (!fHavePruned) {
-            // If we've never pruned, then HAVE_DATA should be equivalent to nTx > 0
-            assert(!(pindex->nStatus & BLOCK_HAVE_DATA) == (pindex->nTx == 0));
-            assert(pindexFirstMissing == pindexFirstNeverProcessed);
+            // If we've never pruned, transaction metadata implies either
+            // available data or an explicitly discarded mutated serialization.
+            assert(((pindex->nStatus & BLOCK_HAVE_DATA) != 0 ||
+                    (pindex->nStatus & BLOCK_DISCARDED_MUTATED_DATA) != 0) == (pindex->nTx > 0));
+            assert(pindexFirstMissing == pindexFirstNeverProcessed ||
+                   (pindexFirstMissing && (pindexFirstMissing->nStatus & BLOCK_DISCARDED_MUTATED_DATA)));
         } else {
             // If we have pruned, then we can only say that HAVE_DATA implies nTx > 0
             if (pindex->nStatus & BLOCK_HAVE_DATA) assert(pindex->nTx > 0);
+        }
+        if (pindex->nStatus & BLOCK_DISCARDED_MUTATED_DATA) {
+            assert(!(pindex->nStatus & BLOCK_HAVE_DATA));
+            assert(pindex->nTx > 0);
         }
         if (pindex->nStatus & BLOCK_HAVE_UNDO) assert(pindex->nStatus & BLOCK_HAVE_DATA);
         assert(((pindex->nStatus & BLOCK_VALID_MASK) >= BLOCK_VALID_TRANSACTIONS) == (pindex->nTx > 0)); // This is pruning-independent.
@@ -5345,7 +5594,7 @@ void CChainState::CheckBlockIndex(const Consensus::Params& consensusParams)
         if (pindexFirstMissing == nullptr) assert(!foundInUnlinked); // We aren't missing data for any parent -- cannot be in m_blocks_unlinked.
         if (pindex->pprev && (pindex->nStatus & BLOCK_HAVE_DATA) && pindexFirstNeverProcessed == nullptr && pindexFirstMissing != nullptr) {
             // We HAVE_DATA for this block, have received data for all parents at some point, but we're currently missing data for some parent.
-            assert(fHavePruned); // We must have pruned.
+            assert(fHavePruned || (pindexFirstMissing->nStatus & BLOCK_DISCARDED_MUTATED_DATA));
             // This block may have entered m_blocks_unlinked if:
             //  - it has a descendant that at some point had more work than the
             //    tip, and

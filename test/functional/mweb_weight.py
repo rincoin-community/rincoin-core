@@ -7,6 +7,7 @@
 from decimal import Decimal
 
 from test_framework.test_framework import BitcoinTestFramework
+from test_framework.rin_util import FIRST_MWEB_HEIGHT, generate_premweb_blocks
 from test_framework.util import assert_equal
 
 class MWEBWeightTest(BitcoinTestFramework):
@@ -21,7 +22,10 @@ class MWEBWeightTest(BitcoinTestFramework):
 
     def run_test(self):
         self.log.info("Create some blocks")
-        self.nodes[0].generate(101)
+        generate_premweb_blocks(self.nodes[0], FIRST_MWEB_HEIGHT - 1)
+        # Let the other nodes catch up first: a node that is still below the MWEB activation height rejects
+        # the peg-in (mweb-before-activation) and does not ask for it again.
+        self.sync_blocks()
 
         self.log.info("Pegin some coins - activate MWEB")
         addr = self.nodes[0].getnewaddress(address_type='mweb')
@@ -37,7 +41,7 @@ class MWEBWeightTest(BitcoinTestFramework):
         self.nodes[2].generate(700)
         self.sync_all()
 
-        # Max number of MWEB transactions in a block (MAX_MINE_WEIGHT 20000 / 39)
+        # Max number of MWEB transactions in a block (20000/39)
         tx_limit = 512
 
         self.log.info("Create transactions up to the max block weight")

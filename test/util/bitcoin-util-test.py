@@ -21,6 +21,13 @@ import subprocess
 import sys
 
 def main():
+    # A pre-release build's rincoin-tx refuses to *sign* mainnet transactions unless
+    # RINCOIN_TESTING_ALLOW_MAINNET=1 is set (see MutateTxSign() in bitcoin-tx.cpp).
+    # The cases here exercise signing purely offline on the default chain, so the
+    # harness opts in for its child processes. setdefault(), so an operator's own
+    # setting is not clobbered; the variable has no effect on a release build.
+    os.environ.setdefault("RINCOIN_TESTING_ALLOW_MAINNET", "1")
+
     config = configparser.ConfigParser()
     config.optionxform = str
     config.read_file(open(os.path.join(os.path.dirname(__file__), "../config.ini"), encoding="utf8"))

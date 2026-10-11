@@ -5,6 +5,7 @@
 """Basic MWEB test"""
 
 from test_framework.test_framework import BitcoinTestFramework
+from test_framework.rin_util import FIRST_MWEB_HEIGHT, generate_premweb_blocks
 from test_framework.util import assert_equal
 
 class MWEBBasicTest(BitcoinTestFramework):
@@ -18,7 +19,7 @@ class MWEBBasicTest(BitcoinTestFramework):
 
     def run_test(self):
         self.log.info("Create all but one pre-MWEB blocks")
-        self.nodes[0].generate(430)
+        generate_premweb_blocks(self.nodes[0], FIRST_MWEB_HEIGHT - 2)
 
         self.log.info("Pegin some coins")
         addr0 = self.nodes[0].getnewaddress(address_type='mweb')
@@ -30,6 +31,9 @@ class MWEBBasicTest(BitcoinTestFramework):
 
         self.log.info("Generate final pre-MWEB block and pegin, ensuring tx is accepted to mempool")
         self.nodes[0].generate(1)
+        # Let the other nodes catch up first: a node that is still below the MWEB activation height rejects
+        # the peg-in (mweb-before-activation) and does not ask for it again.
+        self.sync_blocks()
         pegin2_txid = self.nodes[0].sendtoaddress(addr0, 10)
         self.sync_all();
         assert_equal(set(self.nodes[0].getrawmempool()), {pegin2_txid})

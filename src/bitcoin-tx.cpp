@@ -4,8 +4,11 @@
 
 #if defined(HAVE_CONFIG_H)
 #include <config/bitcoin-config.h>
+
+#include <cstdlib>
 #endif
 
+#include <chainparams.h>
 #include <clientversion.h>
 #include <coins.h>
 #include <consensus/consensus.h>
@@ -43,6 +46,12 @@ static void SetupBitcoinTxArgs(ArgsManager &argsman)
     argsman.AddArg("-create", "Create new, empty TX.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-json", "Select JSON output", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     argsman.AddArg("-txid", "Output only the hex-encoded transaction id of the resultant transaction.", ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
+    argsman.AddArg("-signheight=<n>", "Assume the transaction being signed confirms in a block at height <n>. From the "
+                    "height-840,000 transition height of the selected chain, signatures are replay-protected ones "
+                    "(SIGHASH_FORKID), and every prevtxs entry needs an amount. This tool has no blockchain state to infer a "
+                    "height from, so the height must be given explicitly to sign for a chain that has reached the transition; "
+                    "if omitted, signatures use the historical signature hash.",
+                    ArgsManager::ALLOW_ANY, OptionsCategory::OPTIONS);
     SetupChainParamsBaseOptions(argsman);
 
     argsman.AddArg("delin=N", "Delete input N from TX", ArgsManager::ALLOW_ANY, OptionsCategory::COMMANDS);
@@ -500,7 +509,7 @@ static void MutateTxDelOutput(CMutableTransaction& tx, const std::string& strOut
     tx.vout.erase(tx.vout.begin() + outIdx);
 }
 
-static const unsigned int N_SIGHASH_OPTS = 6;
+static const unsigned int N_SIGHASH_OPTS = 12;
 static const struct {
     const char *flagStr;
     int flags;
@@ -511,6 +520,14 @@ static const struct {
     {"ALL|ANYONECANPAY", SIGHASH_ALL|SIGHASH_ANYONECANPAY},
     {"NONE|ANYONECANPAY", SIGHASH_NONE|SIGHASH_ANYONECANPAY},
     {"SINGLE|ANYONECANPAY", SIGHASH_SINGLE|SIGHASH_ANYONECANPAY},
+    // Rincoin 840k: accepted for signing with -signheight at or above the transition height,
+    // where SIGHASH_FORKID is added in any case.
+    {"ALL|FORKID", SIGHASH_ALL|SIGHASH_FORKID},
+    {"NONE|FORKID", SIGHASH_NONE|SIGHASH_FORKID},
+    {"SINGLE|FORKID", SIGHASH_SINGLE|SIGHASH_FORKID},
+    {"ALL|FORKID|ANYONECANPAY", SIGHASH_ALL|SIGHASH_FORKID|SIGHASH_ANYONECANPAY},
+    {"NONE|FORKID|ANYONECANPAY", SIGHASH_NONE|SIGHASH_FORKID|SIGHASH_ANYONECANPAY},
+    {"SINGLE|FORKID|ANYONECANPAY", SIGHASH_SINGLE|SIGHASH_FORKID|SIGHASH_ANYONECANPAY},
 };
 
 static bool findSighashFlags(int& flags, const std::string& flagStr)
@@ -541,6 +558,22 @@ static CAmount AmountFromValue(const UniValue& value)
 
 static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 {
+    // Rincoin 840k: development-build safeguard, same as rincoind/rincoin-qt (see
+    // CheckMainnetTestingGuard() in init.cpp): a pre-release build refuses to
+    // produce signed mainnet transactions unless RINCOIN_TESTING_ALLOW_MAINNET=1
+    // is set in the process environment. Scoped to the "sign" command only --
+    // offline structural manipulation produces nothing that could be broadcast.
+    // Release builds do not have this check.
+    if (!CLIENT_VERSION_IS_RELEASE && Params().NetworkIDString() == CBaseChainParams::MAIN) {
+        const char* allow_mainnet = std::getenv("RINCOIN_TESTING_ALLOW_MAINNET");
+        if (allow_mainnet == nullptr || std::string(allow_mainnet) != "1") {
+            throw std::runtime_error(
+                "This is a pre-release development build that changes consensus rules at block "
+                "height 840,000. It refuses to sign mainnet transactions unless "
+                "RINCOIN_TESTING_ALLOW_MAINNET=1 is set in the process environment.");
+        }
+    }
+
     int nHashType = SIGHASH_ALL;
 
     if (flagStr.size() > 0)
@@ -567,6 +600,21 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
             throw std::runtime_error("privatekey not valid");
         }
         tempKeystore.AddKey(key);
+    }
+
+    // Rincoin 840k: this tool has no blockchain state of its own, so unlike the
+    // wallet and RPC signing paths there is no tip height to infer the
+    // signature-hash regime from. It is given explicitly with -signheight= and
+    // compared against the transition height of the selected network. Omitted,
+    // signing is byte-identical to the historical behavior.
+    bool sig_fork_id_active = false;
+    if (gArgs.IsArgSet("-signheight")) {
+        int64_t signHeight = gArgs.GetArg("-signheight", 0);
+        sig_fork_id_active = signHeight >= Params().GetConsensus().nS6bHeight;
+    }
+    const SigForkId& sig_fork_id = Params().GetConsensus().sigForkId;
+    if ((nHashType & SIGHASH_FORKID) && !sig_fork_id_active) {
+        throw std::runtime_error("a FORKID signature hash type needs -signheight at or above the transition height");
     }
 
     // Add previous txouts given in the RPC call:
@@ -613,6 +661,9 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
                 newcoin.out.nValue = 0;
                 if (prevOut.exists("amount")) {
                     newcoin.out.nValue = AmountFromValue(prevOut["amount"]);
+                } else if (sig_fork_id_active) {
+                    // The replay-protected signature hash commits to the amount of every input.
+                    throw std::runtime_error("prevtxs entry needs an amount to sign for the height given by -signheight");
                 }
                 newcoin.nHeight = 1;
                 view.AddCoin(out, std::move(newcoin), true);
@@ -632,7 +683,7 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
 
     const FillableSigningProvider& keystore = tempKeystore;
 
-    bool fHashSingle = ((nHashType & ~SIGHASH_ANYONECANPAY) == SIGHASH_SINGLE);
+    bool fHashSingle = ((nHashType & ~(SIGHASH_ANYONECANPAY | SIGHASH_FORKID)) == SIGHASH_SINGLE);
 
     // Sign what we can:
     for (unsigned int i = 0; i < mergedTx.vin.size(); i++) {
@@ -644,10 +695,16 @@ static void MutateTxSign(CMutableTransaction& tx, const std::string& flagStr)
         const CScript& prevPubKey = coin.out.scriptPubKey;
         const CAmount& amount = coin.out.nValue;
 
-        SignatureData sigdata = DataFromTransaction(mergedTx, i, coin.out);
+        SignatureData sigdata = DataFromTransaction(mergedTx, i, coin.out, &sig_fork_id, sig_fork_id_active);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
-        if (!fHashSingle || (i < mergedTx.vout.size()))
-            ProduceSignature(keystore, MutableTransactionSignatureCreator(&mergedTx, i, amount, nHashType), prevPubKey, sigdata);
+        if (!fHashSingle || (i < mergedTx.vout.size())) {
+            if (sig_fork_id_active) {
+                MutableTransactionSignatureCreator creator(&mergedTx, i, amount, sig_fork_id, /*sig_fork_id_active=*/true, nHashType);
+                ProduceSignature(keystore, creator, prevPubKey, sigdata);
+            } else {
+                ProduceSignature(keystore, MutableTransactionSignatureCreator(&mergedTx, i, amount, nHashType), prevPubKey, sigdata);
+            }
+        }
 
         UpdateInput(txin, sigdata);
     }

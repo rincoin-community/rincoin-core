@@ -24,7 +24,7 @@ Contributors should base new work on `dev` unless an issue or pull request speci
 
 It is updated from `dev` when a release is prepared, and release tags are created on it. Between releases it changes only for fixes to the released version.
 
-Because the currently shipping release is the terminal `legacy-1.1` build (see below), `master` presently tracks the line from which the **next** production release will be built rather than the binary running today. That exception ends with the first non-terminal release.
+Until `v1.2.0` the shipping release was the terminal `legacy-1.1` build (see below), and `master` tracked the line from which the next production release would be built. With `v1.2.0`, the first release after it that does not stop at a fixed height, `master` tracks the released software.
 
 For deployed nodes, prefer a published release from the [releases page](https://github.com/rincoin-community/rincoin-core/releases) over building any branch.
 
@@ -48,9 +48,9 @@ The existence of a branch does not imply that its work has been accepted, schedu
 
 ### Consensus at height 840,000
 
-A public review of the consensus decision at block height **840,000** is in progress. Analysis, candidate specifications, supporting material, and discussion are maintained separately in the [`consensus-840k`](https://github.com/rincoin-community/consensus-840k) repository.
+The analysis, the specification, supporting material, and discussion of the consensus change at block height **840,000** are maintained separately in the [`consensus-840k`](https://github.com/rincoin-community/consensus-840k) repository. Rincoin Community Core implements the transition specified there in its 1.2.0 line.
 
-Consensus-sensitive changes should follow that process in addition to the normal development and review workflow, and are developed on their own branch until the decision is made.
+Consensus-sensitive changes follow that process in addition to the normal development and review workflow: they are developed on their own `consensus/<codename>` branch, reach `dev` through review, and are production software only once they are part of a published release.
 
 ## Summary
 

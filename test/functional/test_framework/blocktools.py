@@ -115,6 +115,39 @@ def script_BIP34_coinbase_height(height):
     return CScript([CScriptNum(height)])
 
 
+# Rincoin regtest: halving interval 210 (1/1000 of mainnet) and the height-840,000
+# transition (S6/b) at 4 intervals. Mirrors CRegTestParams / SetS6bSchedule() in
+# src/chainparams.cpp; the terminal height 234,587 is 30 intervals plus the scaled
+# issuance ceiling's remainder divided by the final subsidy, rounded down.
+REGTEST_HALVING_INTERVAL = 210
+REGTEST_S6B_HEIGHT = 4 * REGTEST_HALVING_INTERVAL
+REGTEST_S6B_PHASES = (
+    (4 * REGTEST_HALVING_INTERVAL, 4 * COIN),
+    (10 * REGTEST_HALVING_INTERVAL, 2 * COIN),
+    (20 * REGTEST_HALVING_INTERVAL, 1 * COIN),
+    (30 * REGTEST_HALVING_INTERVAL, 60000000),
+    (234587, 0),
+)
+
+
+def regtest_block_subsidy(height):
+    """Maximum block subsidy at `height` on regtest, in base units."""
+    if height >= REGTEST_S6B_HEIGHT:
+        subsidy = 0
+        for start, phase_subsidy in REGTEST_S6B_PHASES:
+            if height >= start:
+                subsidy = phase_subsidy
+        return subsidy
+    halvings = height // REGTEST_HALVING_INTERVAL
+    return (50 * COIN) >> halvings if halvings < 64 else 0
+
+
+def regtest_sighash_forkid_active(height):
+    """Whether ECDSA signatures of a transaction that is confirmed in a regtest block at
+    `height` have to be replay-protected ones (script.ForkIdSignatureHash)."""
+    return height >= REGTEST_S6B_HEIGHT
+
+
 def create_coinbase(height, pubkey=None, extra_output_script=None, fees=0):
     """Create a coinbase transaction.
 
@@ -126,10 +159,7 @@ def create_coinbase(height, pubkey=None, extra_output_script=None, fees=0):
     coinbase = CTransaction()
     coinbase.vin.append(CTxIn(COutPoint(0, 0xffffffff), script_BIP34_coinbase_height(height), 0xffffffff))
     coinbaseoutput = CTxOut()
-    coinbaseoutput.nValue = 50 * COIN
-    halvings = int(height / 150)  # regtest
-    coinbaseoutput.nValue >>= halvings
-    coinbaseoutput.nValue += fees
+    coinbaseoutput.nValue = regtest_block_subsidy(height) + fees
     if pubkey is not None:
         coinbaseoutput.scriptPubKey = CScript([pubkey, OP_CHECKSIG])
     else:

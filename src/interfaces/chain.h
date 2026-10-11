@@ -219,6 +219,10 @@ public:
     //! Check if in IBD.
     virtual bool isInitialBlockDownload() = 0;
 
+    //! Check whether the Taproot deployment (witness version 1) is enforced for
+    //! the block after the current tip.
+    virtual bool isTaprootActive() = 0;
+
     //! Check if shutdown requested.
     virtual bool shutdownRequested() = 0;
 

@@ -12,7 +12,9 @@ makes it Rincoin lives in a fairly small, well-identified set of deltas
 upstream code and changed with upstream conventions.
 
 Key properties: RinHash PoW (BLAKE3 → Argon2d → SHA3-256), 60 s target
-spacing, 50 RIN initial subsidy halving every 210,000 blocks, DGW difficulty
+spacing, 50 RIN initial subsidy halving every 210,000 blocks up to the
+height-840,000 transition (then 4 / 2 / 1 / 0.6 RIN, capped at 168,000,000 RIN;
+see "Height-840,000 transition" below), DGW difficulty
 after height 30,000, MWEB inherited from Litecoin, `RINC` network magic,
 P2P 9555 / RPC 9556, base58 `R` addresses, bech32 HRP `rrin`.
 
@@ -133,8 +135,26 @@ Rincoin behaviour", start here:
 - **Difficulty** — `DarkGravityWave()` in [src/pow.cpp](src/pow.cpp), gated by
   `consensus.DGWHeight`; legacy retarget below it.
 - **Chain parameters** — [src/chainparams.cpp](src/chainparams.cpp) for all four
-  networks (main/test/regtest/signet). Regtest uses 60 s spacing to match
-  mainnet, which differs from upstream.
+  networks (main/test/regtest/preview). Regtest uses 60 s spacing to match
+  mainnet, which differs from upstream. The test networks scale mainnet heights
+  with their halving interval (`ScaleMainnetHeight()`; testnet 2,100, regtest and
+  preview 210), and versionbits deployment heights are additionally rounded down to
+  the confirmation window (`SetScaledDeploymentHeights()`); every value is tabulated in
+  [doc/rincoin-parameters.md](doc/rincoin-parameters.md).
+- **Height-840,000 transition** — subsidy phases in `vS6bSubsidyPhases`
+  (`SetS6bSchedule()`), transition height `nS6bHeight` (840 on regtest); the block
+  at that height must claim exactly subsidy plus fees (`ConnectBlock`,
+  `bad-cb-amount-transition`). From that height every ECDSA signature must set
+  `SIGHASH_FORKID` and is hashed the Bitcoin Gold way: BIP143 for pre-SegWit inputs
+  too, with the fork ID 840 in the hash type
+  ([src/consensus/sigforkid.h](src/consensus/sigforkid.h), `SignatureHash()`,
+  `CheckSignatureEncoding()`); the regime travels in `PrecomputedTransactionData`
+  (`SetSigForkId()`), is set per block in `ConnectBlock` and for the next block in the
+  mempool, and is part of the script-execution cache key. Every path that creates *or checks*
+  signatures (wallet, raw-transaction and PSBT RPCs, `rincoin-tx -signheight`, the
+  GUI) has to pass the regime of the confirming block. Functional tests:
+  `feature_s6b_*.py`, `wallet_s6b_signing.py`, helpers in
+  `test_framework/s6b_util.py`.
 - **Peer protocol floor** — `vMinPeerProtoVersionFloors` +
   `MinPeerProtoVersionFloorAt()` in
   [src/consensus/params.h](src/consensus/params.h), enforced during the version

@@ -11,6 +11,7 @@ from test_framework.blocktools import (
     MAX_BLOCK_SIGOPS_WEIGHT,
     NORMAL_GBT_REQUEST_PARAMS,
     WITNESS_SCALE_FACTOR,
+    regtest_sighash_forkid_active,
 )
 from test_framework.messages import (
     COutPoint,
@@ -25,6 +26,7 @@ from test_framework.script import (
     CScript,
     CScriptNum,
     CScriptOp,
+    ForkIdSignatureHash,
     LEAF_VERSION_TAPSCRIPT,
     LegacySignatureHash,
     LOCKTIME_THRESHOLD,
@@ -71,6 +73,7 @@ from test_framework.script import (
     SIGHASH_NONE,
     SIGHASH_SINGLE,
     SIGHASH_ANYONECANPAY,
+    SIGHASH_FORKID,
     SegwitV0SignatureHash,
     TaprootSignatureHash,
     is_op_success,
@@ -153,6 +156,15 @@ def override(expr, **kwargs):
 
 # === Implementations for the various default expressions in DEFAULT_CONTEXT ===
 
+# Rincoin: whether the ECDSA signatures of pre-taproot inputs in the block under construction have to be
+# replay-protected ones (from the regtest transition height). test_spenders() updates it before every
+# transaction. Such a signature gets SIGHASH_FORKID added to whatever hash type a spender asks for.
+SIGHASH_FORKID_ACTIVE = False
+
+def default_forkid_active(ctx):
+    """Default expression for "forkid_active": the value for the block under construction."""
+    return SIGHASH_FORKID_ACTIVE
+
 def default_hashtype(ctx):
     """Default expression for "hashtype": SIGHASH_DEFAULT for taproot, SIGHASH_ALL otherwise."""
     mode = get(ctx, "mode")
@@ -210,10 +222,15 @@ def default_sighash(ctx):
         # BIP143 signature hash
         scriptcode = get(ctx, "scriptcode")
         utxos = get(ctx, "utxos")
+        if get(ctx, "forkid_active"):
+            return ForkIdSignatureHash(scriptcode, tx, idx, hashtype | SIGHASH_FORKID, utxos[idx].nValue)
         return SegwitV0SignatureHash(scriptcode, tx, idx, hashtype, utxos[idx].nValue)
     else:
         # Pre-segwit signature hash
         scriptcode = get(ctx, "scriptcode")
+        if get(ctx, "forkid_active"):
+            utxos = get(ctx, "utxos")
+            return ForkIdSignatureHash(scriptcode, tx, idx, hashtype | SIGHASH_FORKID, utxos[idx].nValue)
         return LegacySignatureHash(scriptcode, tx, idx, hashtype)[0]
 
 def default_tweak(ctx):
@@ -248,7 +265,7 @@ def default_hashtype_actual(ctx):
     hashtype = get(ctx, "hashtype")
     mode = get(ctx, "mode")
     if mode != "taproot":
-        return hashtype
+        return hashtype | SIGHASH_FORKID if get(ctx, "forkid_active") else hashtype
     idx = get(ctx, "idx")
     tx = get(ctx, "tx")
     if hashtype & 3 == SIGHASH_SINGLE and idx >= len(tx.vout):
@@ -359,6 +376,8 @@ DEFAULT_CONTEXT = {
     # == Parameters that can be changed without invalidating, but do have a default: ==
     # The hashtype (as an integer).
     "hashtype": default_hashtype,
+    # Whether pre-taproot ECDSA signatures are replay-protected ones (SIGHASH_FORKID is added to the hashtype).
+    "forkid_active": default_forkid_active,
     # The annex (only when mode=="taproot").
     "annex": None,
     # The codeseparator position (only when mode=="taproot").
@@ -577,6 +596,14 @@ VALID_SIGHASHES_ECDSA = [
 ]
 
 VALID_SIGHASHES_TAPROOT = [SIGHASH_DEFAULT] + VALID_SIGHASHES_ECDSA
+
+def random_undefined_hashtype(lo, hi):
+    """Rincoin: a random ECDSA hash type that is undefined, and so non-standard, on both sides of the regtest
+    transition height. From it SIGHASH_FORKID (0x40) is a defined flag: 0x41, say, is SIGHASH_ALL there."""
+    while True:
+        hashtype = random.randrange(lo, hi)
+        if (hashtype & ~(SIGHASH_ANYONECANPAY | SIGHASH_FORKID)) not in (SIGHASH_ALL, SIGHASH_NONE, SIGHASH_SINGLE):
+            return hashtype
 
 VALID_SIGHASHES_TAPROOT_SINGLE = [
     SIGHASH_SINGLE,
@@ -1101,7 +1128,7 @@ def spenders_taproot_active():
         eckey2.set(generate_privkey(), compressed)
         for p2sh in [False, True]:
             for witv0 in [False, True]:
-                for hashtype in VALID_SIGHASHES_ECDSA + [random.randrange(0x04, 0x80), random.randrange(0x84, 0x100)]:
+                for hashtype in VALID_SIGHASHES_ECDSA + [random_undefined_hashtype(0x04, 0x80), random_undefined_hashtype(0x84, 0x100)]:
                     standard = (hashtype in VALID_SIGHASHES_ECDSA) and (compressed or not witv0)
                     add_spender(spenders, "legacy/pk-wrongkey", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, script=CScript([pubkey1, OP_CHECKSIG]), **SINGLE_SIG, key=eckey1, failure={"key": eckey2}, sigops_weight=4-3*witv0, **ERR_NO_SUCCESS)
                     add_spender(spenders, "legacy/pkh-sighashflip", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, pkh=pubkey1, key=eckey1, **SIGHASH_BITFLIP, sigops_weight=4-3*witv0, **ERR_NO_SUCCESS)
@@ -1109,7 +1136,7 @@ def spenders_taproot_active():
     # Verify that OP_CHECKSIGADD wasn't accidentally added to pre-taproot validation logic.
     for p2sh in [False, True]:
         for witv0 in [False, True]:
-            for hashtype in VALID_SIGHASHES_ECDSA + [random.randrange(0x04, 0x80), random.randrange(0x84, 0x100)]:
+            for hashtype in VALID_SIGHASHES_ECDSA + [random_undefined_hashtype(0x04, 0x80), random_undefined_hashtype(0x84, 0x100)]:
                 standard = hashtype in VALID_SIGHASHES_ECDSA and (p2sh or witv0)
                 add_spender(spenders, "compat/nocsa", hashtype=hashtype, p2sh=p2sh, witv0=witv0, standard=standard, script=CScript([OP_IF, OP_11, pubkey1, OP_CHECKSIGADD, OP_12, OP_EQUAL, OP_ELSE, pubkey1, OP_CHECKSIG, OP_ENDIF]), key=eckey1, sigops_weight=4-3*witv0, inputs=[getter("sign"), b''], failure={"inputs": [getter("sign"), b'\x01']}, **ERR_UNDECODABLE)
 
@@ -1378,6 +1405,11 @@ class TaprootTest(BitcoinTestFramework):
             for _ in range(max(1, num_inputs - len(input_utxos))):
                 input_utxos.append(normal_utxos.pop())
                 left -= 1
+
+            # Rincoin: this transaction is confirmed at lastblockheight + 1. From the regtest transition height
+            # on, the ECDSA signatures of its pre-taproot inputs are replay-protected ones.
+            global SIGHASH_FORKID_ACTIVE
+            SIGHASH_FORKID_ACTIVE = regtest_sighash_forkid_active(self.lastblockheight + 1)
 
             # The first input cannot require a mismatching output (as there is at least one output).
             while True:

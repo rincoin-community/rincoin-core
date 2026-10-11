@@ -13,6 +13,8 @@ from test_framework.blocktools import (
     create_tx_with_script,
     get_legacy_sigopcount_block,
     MAX_BLOCK_SIGOPS,
+    REGTEST_S6B_HEIGHT,
+    regtest_sighash_forkid_active,
 )
 from test_framework.key import ECKey
 from test_framework.messages import (
@@ -46,6 +48,8 @@ from test_framework.script import (
     OP_RETURN,
     OP_TRUE,
     SIGHASH_ALL,
+    SIGHASH_FORKID,
+    ForkIdSignatureHash,
     LegacySignatureHash,
     hash160,
 )
@@ -1254,7 +1258,11 @@ class FullBlockTest(BitcoinTestFramework):
         blocks = []
         spend = out[32]
         for i in range(89, LARGE_REORG_SIZE + 89):
-            b = self.next_block(i, spend)
+            # Rincoin: this chain crosses the regtest transition height. The block at that height has
+            # to claim exactly subsidy plus fees, so there the coinbase also claims the one-satoshi fee
+            # of the filler transaction added below (elsewhere under-claiming stays valid).
+            is_transition_block = self.block_heights[self.tip.sha256] + 1 == REGTEST_S6B_HEIGHT
+            b = self.next_block(i, spend, additional_coinbase_value=1 if is_transition_block else 0)
             tx = CTransaction()
             script_length = MAX_BLOCK_BASE_SIZE - len(b.serialize()) - 69
             script_output = CScript([b'\x00' * script_length])
@@ -1312,13 +1320,22 @@ class FullBlockTest(BitcoinTestFramework):
 
     # sign a transaction, using the key we know about
     # this signs input 0 in tx, which is assumed to be spending output n in spend_tx
-    def sign_tx(self, tx, spend_tx):
+    # height is the height of the block that confirms tx (default: the block after the current tip); from
+    # the regtest transition height on, the signature has to be a replay-protected one.
+    def sign_tx(self, tx, spend_tx, height=None):
         scriptPubKey = bytearray(spend_tx.vout[0].scriptPubKey)
         if (scriptPubKey[0] == OP_TRUE):  # an anyone-can-spend
             tx.vin[0].scriptSig = CScript()
             return
-        (sighash, err) = LegacySignatureHash(spend_tx.vout[0].scriptPubKey, tx, 0, SIGHASH_ALL)
-        tx.vin[0].scriptSig = CScript([self.coinbase_key.sign_ecdsa(sighash) + bytes(bytearray([SIGHASH_ALL]))])
+        if height is None:
+            height = self.block_heights[self.tip.sha256] + 1
+        if regtest_sighash_forkid_active(height):
+            hashtype = SIGHASH_ALL | SIGHASH_FORKID
+            sighash = ForkIdSignatureHash(spend_tx.vout[0].scriptPubKey, tx, 0, hashtype, spend_tx.vout[tx.vin[0].prevout.n].nValue)
+        else:
+            hashtype = SIGHASH_ALL
+            (sighash, err) = LegacySignatureHash(spend_tx.vout[0].scriptPubKey, tx, 0, hashtype)
+        tx.vin[0].scriptSig = CScript([self.coinbase_key.sign_ecdsa(sighash) + bytes(bytearray([hashtype]))])
 
     def create_and_sign_transaction(self, spend_tx, value, script=CScript([OP_TRUE])):
         tx = self.create_tx(spend_tx, 0, value, script)
@@ -1345,7 +1362,7 @@ class FullBlockTest(BitcoinTestFramework):
             coinbase.rehash()
             block = create_block(base_block_hash, coinbase, block_time, version=version)
             tx = self.create_tx(spend, 0, 1, script)  # spend 1 satoshi
-            self.sign_tx(tx, spend)
+            self.sign_tx(tx, spend, height)
             self.add_transactions_to_block(block, [tx])
             block.hashMerkleRoot = block.calc_merkle_root()
         # Block is created. Find a valid nonce.

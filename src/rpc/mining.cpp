@@ -808,7 +808,10 @@ static RPCHelpMan getblocktemplate()
         transactions.push_back(entry);
     }
 
+    // Rincoin: voluntary identification tag, see COINBASE_FLAGS in miner.h. The value is
+    // a script fragment (push opcode included) for the coinbase scriptSig.
     UniValue aux(UniValue::VOBJ);
+    aux.pushKV("flags", HexStr(COINBASE_FLAGS));
 
     arith_uint256 hashTarget = arith_uint256().SetCompact(pblock->nBits);
 

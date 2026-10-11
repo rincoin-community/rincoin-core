@@ -5,7 +5,9 @@
 
 #include <wallet/wallet.h>
 
+#include <chainparams.h>
 #include <chain.h>
+#include <chainparams.h>
 #include <consensus/consensus.h>
 #include <consensus/validation.h>
 #include <fs.h>
@@ -57,6 +59,12 @@ static const size_t OUTPUT_GROUP_MAX_ENTRIES = 10;
 static RecursiveMutex cs_wallets;
 static std::vector<std::shared_ptr<CWallet>> vpwallets GUARDED_BY(cs_wallets);
 static std::list<LoadWalletFn> g_load_wallet_fns GUARDED_BY(cs_wallets);
+
+static bool IsFrozenMWEBOutput(const CWallet& wallet, const mw::Hash& output_id)
+{
+    const auto& frozen_outputs = Params().GetConsensus().frozen_mweb_output_ids;
+    return std::find(frozen_outputs.begin(), frozen_outputs.end(), uint256(output_id.vec())) != frozen_outputs.end();
+}
 
 bool AddWalletSetting(interfaces::Chain& chain, const std::string& wallet_name)
 {
@@ -1700,23 +1708,12 @@ CAmount CWallet::GetCredit(const CTransaction& tx, const boost::optional<MWEB::W
             throw std::runtime_error(std::string(__func__) + ": value out of range");
     }
 
-    bool has_my_inputs = false;
-    for (const CTxInput& txin : tx.GetInputs()) {
+    for (const PegOutCoin& pegout : tx.mweb_tx.GetPegOuts()) {
         LOCK(cs_wallet);
-        if (IsMine(txin)) {
-            has_my_inputs = true;
-            break;
-        }
-    }
-
-    if (!has_my_inputs) {
-        for (const PegOutCoin& pegout : tx.mweb_tx.GetPegOuts()) {
-            LOCK(cs_wallet);
-            if (!(IsMine(DestinationAddr(pegout.GetScriptPubKey())) & filter)) {
-                nCredit += pegout.GetAmount();
-                if (!MoneyRange(nCredit))
-                    throw std::runtime_error(std::string(__func__) + ": value out of range");
-            }
+        if (IsMine(DestinationAddr(pegout.GetScriptPubKey())) & filter) {
+            nCredit += pegout.GetAmount();
+            if (!MoneyRange(nCredit))
+                throw std::runtime_error(std::string(__func__) + ": value out of range");
         }
     }
 
@@ -2403,6 +2400,10 @@ CAmount CWalletTx::GetAvailableCredit(bool fUseCache, const isminefilter& filter
     CAmount nCredit = 0;
     for (const CTxOutput& output : GetOutputs())
     {
+        if (output.IsMWEB() && IsFrozenMWEBOutput(*pwallet, output.ToMWEB())) {
+            continue;
+        }
+
         if (!pwallet->IsSpent(output.GetIndex()) && (allow_used_addresses || !pwallet->IsSpentKey(output))) {
             nCredit += pwallet->GetCredit(output, filter);
             if (!MoneyRange(nCredit))
@@ -2700,6 +2701,10 @@ void CWallet::AvailableCoins(std::vector<COutputCoin>& vCoins, bool fOnlySafe, c
             if (coinControl && ((output.IsMWEB() && coinControl->fPegIn) || (!output.IsMWEB() && coinControl->fPegOut)))
                 continue;
 
+            if (output.IsMWEB() && IsFrozenMWEBOutput(*this, output.ToMWEB())) {
+                continue;
+            }
+
             // Only consider selected coins if add_inputs is false
             if (coinControl && !coinControl->m_add_inputs && !coinControl->IsSelected(output.GetIndex())) {
                 continue;
@@ -2907,7 +2912,8 @@ bool CWallet::SelectCoins(const std::vector<COutputCoin>& vAvailableCoins, const
     {
         if (idx.type() == typeid(mw::Hash)) {
             mw::Coin mweb_coin;
-            if (!GetCoin(boost::get<mw::Hash>(idx), mweb_coin) || !mweb_coin.IsMine()) {
+            const mw::Hash& output_id = boost::get<mw::Hash>(idx);
+            if (IsFrozenMWEBOutput(*this, output_id) || !GetCoin(output_id, mweb_coin) || !mweb_coin.IsMine()) {
                 return false;
             }
 
@@ -3010,16 +3016,31 @@ bool CWallet::SignTransaction(CMutableTransaction& tx) const
         coins[input.prevout] = Coin(wtx.tx->vout[input.prevout.n], wtx.m_confirm.block_height, wtx.IsCoinBase(), wtx.IsHogEx());
     }
     std::map<int, std::string> input_errors;
-    return SignTransaction(tx, coins, SIGHASH_ALL, input_errors);
+
+    // Rincoin 840k: sign using the post-fork sighash if this
+    // transaction is expected to confirm at or after nS6bHeight (the same
+    // "confirming height = current tip + 1" convention used by
+    // GetSpendHeight()/AcceptSingleTransaction() in validation.cpp). Read
+    // m_last_block_processed_height directly rather than via
+    // GetLastBlockHeight(), which asserts if the wallet hasn't processed a
+    // block yet (e.g. not yet synced) -- that's a real, if narrow, state for
+    // a wallet to be in and must not crash the process; fall back to "spend
+    // height 0" (forkid inactive) in that case, matching this branch's
+    // general "unknown context defaults to pre-fork behavior" convention.
+    const Consensus::Params& fork_params = Params().GetConsensus();
+    const int nSpendHeight = (m_last_block_processed_height >= 0 ? m_last_block_processed_height : -1) + 1;
+    const bool sig_fork_id_active = nSpendHeight >= fork_params.nS6bHeight;
+    return SignTransaction(tx, coins, SIGHASH_ALL, input_errors, &fork_params.sigForkId, sig_fork_id_active);
 }
 
-bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors) const
+bool CWallet::SignTransaction(CMutableTransaction& tx, const std::map<COutPoint, Coin>& coins, int sighash, std::map<int, std::string>& input_errors,
+                               const SigForkId* sig_fork_id, bool sig_fork_id_active) const
 {
     // Try to sign with all ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         // spk_man->SignTransaction will return true if the transaction is complete,
         // so we can exit early and return true if that happens
-        if (spk_man->SignTransaction(tx, coins, sighash, input_errors)) {
+        if (spk_man->SignTransaction(tx, coins, sighash, input_errors, sig_fork_id, sig_fork_id_active)) {
             return true;
         }
     }
@@ -3056,10 +3077,20 @@ TransactionError CWallet::FillPSBT(PartiallySignedTransaction& psbtx, bool& comp
         }
     }
 
+    // Rincoin 840k: same "confirming height = tip + 1" convention as
+    // CWallet::SignTransaction() above, including the same non-asserting
+    // read of m_last_block_processed_height.
+    const Consensus::Params& fork_params = Params().GetConsensus();
+    const int nSpendHeight = (m_last_block_processed_height >= 0 ? m_last_block_processed_height : -1) + 1;
+    const bool sig_fork_id_active = nSpendHeight >= fork_params.nS6bHeight;
+    if (sign && (sighash_type & SIGHASH_FORKID) && !sig_fork_id_active) {
+        return TransactionError::SIGHASH_MISMATCH;
+    }
+
     // Fill in information from ScriptPubKeyMans
     for (ScriptPubKeyMan* spk_man : GetAllScriptPubKeyMans()) {
         int n_signed_this_spkm = 0;
-        TransactionError res = spk_man->FillPSBT(psbtx, sighash_type, sign, bip32derivs, &n_signed_this_spkm);
+        TransactionError res = spk_man->FillPSBT(psbtx, sighash_type, sign, bip32derivs, &n_signed_this_spkm, &fork_params.sigForkId, sig_fork_id_active);
         if (res != TransactionError::OK) {
             return res;
         }
@@ -3152,6 +3183,28 @@ bool CWallet::CreateTransaction(
         FeeCalculation& fee_calc_out,
         bool sign)
 {
+    // Refuse to pay to witness version 1 (Taproot) or a later witness version while
+    // the chain does not enforce Taproot yet: until the deployment is active such an
+    // output is anyone-can-spend at the consensus level, and the address decoder
+    // accepts genuine bech32m addresses, so this is reachable from sendtoaddress and
+    // not only from the raw transaction APIs. Once Taproot is active the upstream
+    // behavior applies again.
+    if (!chain().isTaprootActive()) {
+        for (const CRecipient& recipient : vecSend) {
+            // MWEB recipients carry no script.
+            if (recipient.IsMWEB()) continue;
+
+            std::vector<std::vector<unsigned char>> solutions;
+            const TxoutType type = Solver(recipient.receiver.GetScript(), solutions);
+            if (type == TxoutType::WITNESS_V1_TAPROOT || type == TxoutType::WITNESS_UNKNOWN) {
+                error = _("Cannot create an output paying to witness version 1 or later: "
+                          "Taproot is not active on this chain yet, so such an output "
+                          "could be spent by anyone.");
+                return false;
+            }
+        }
+    }
+
     int nChangePosIn = nChangePosInOut;
 
     Optional<AssembledTx> tx1 = TxAssembler(*this).AssembleTx(vecSend, coin_control, nChangePosIn, sign, error);

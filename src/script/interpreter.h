@@ -10,6 +10,8 @@
 #include <span.h>
 #include <primitives/transaction.h>
 
+#include <consensus/sigforkid.h>
+
 #include <vector>
 #include <stdint.h>
 
@@ -27,6 +29,9 @@ enum
     SIGHASH_NONE = 2,
     SIGHASH_SINGLE = 3,
     SIGHASH_ANYONECANPAY = 0x80,
+    //! Rincoin: replay-protected signature hash (see consensus/sigforkid.h). Only ECDSA
+    //! signatures (pre-SegWit and SegWit v0) use it, and only from the height-840,000 transition.
+    SIGHASH_FORKID = 0x40,
 
     SIGHASH_DEFAULT = 0, //!< Taproot only; implied when sighash byte is missing, and equivalent to SIGHASH_ALL
     SIGHASH_OUTPUT_MASK = 3,
@@ -141,7 +146,10 @@ enum
     SCRIPT_VERIFY_DISCOURAGE_UPGRADABLE_PUBKEYTYPE = (1U << 20),
 };
 
-bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror);
+/** Rincoin 840k: with sighash_forkid_active every non-empty signature must set
+ *  SIGHASH_FORKID (a consensus rule, independent of the flags), and STRICTENC
+ *  accepts the hash types that carry it. */
+bool CheckSignatureEncoding(const std::vector<unsigned char> &vchSig, unsigned int flags, ScriptError* serror, bool sighash_forkid_active = false);
 
 struct PrecomputedTransactionData
 {
@@ -163,6 +171,24 @@ struct PrecomputedTransactionData
     std::vector<CTxOut> m_spent_outputs;
     //! Whether m_spent_outputs is initialized.
     bool m_spent_outputs_ready = false;
+
+    // Rincoin 840k: replay-protected signature hash. From
+    // Consensus::Params::nS6bHeight every ECDSA signature (SigVersion::BASE and
+    // WITNESS_V0) must set SIGHASH_FORKID, and such a signature is hashed with
+    // the BIP143 algorithm with m_sig_fork_id in the upper three bytes of the
+    // serialized hash type (see SignatureHash() and consensus/sigforkid.h).
+    // Whichever caller owns this object and knows the height of the confirming
+    // block sets the regime via SetSigForkId(), before Init() if the BIP143
+    // hashes are to be precomputed for pre-SegWit inputs as well. A caller that
+    // never does gets the historical behavior, byte for byte.
+    SigForkId m_sig_fork_id{0};
+    bool m_sig_fork_id_active = false;
+
+    void SetSigForkId(const SigForkId& sig_fork_id, bool active)
+    {
+        m_sig_fork_id = sig_fork_id;
+        m_sig_fork_id_active = active;
+    }
 
     PrecomputedTransactionData() = default;
 
@@ -234,6 +260,17 @@ public:
         return false;
     }
 
+    /**
+     * Rincoin 840k: whether the rules of the height-840,000 transition apply to
+     * the transaction being checked, that is, whether ECDSA signatures must set
+     * SIGHASH_FORKID. Checkers without transaction context, or with the
+     * transition inactive, return false.
+     */
+    virtual bool SigHashForkIdActive() const
+    {
+        return false;
+    }
+
     virtual bool CheckLockTime(const CScriptNum& nLockTime) const
     {
          return false;
@@ -265,6 +302,7 @@ public:
     GenericTransactionSignatureChecker(const T* txToIn, unsigned int nInIn, const CAmount& amountIn, const PrecomputedTransactionData& txdataIn) : txTo(txToIn), nIn(nInIn), amount(amountIn), txdata(&txdataIn) {}
     bool CheckECDSASignature(const std::vector<unsigned char>& scriptSig, const std::vector<unsigned char>& vchPubKey, const CScript& scriptCode, SigVersion sigversion) const override;
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, const ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override;
+    bool SigHashForkIdActive() const override;
     bool CheckLockTime(const CScriptNum& nLockTime) const override;
     bool CheckSequence(const CScriptNum& nSequence) const override;
 };
@@ -288,6 +326,11 @@ public:
     bool CheckSchnorrSignature(Span<const unsigned char> sig, Span<const unsigned char> pubkey, SigVersion sigversion, const ScriptExecutionData& execdata, ScriptError* serror = nullptr) const override
     {
         return m_checker.CheckSchnorrSignature(sig, pubkey, sigversion, execdata, serror);
+    }
+
+    bool SigHashForkIdActive() const override
+    {
+        return m_checker.SigHashForkIdActive();
     }
 
     bool CheckLockTime(const CScriptNum& nLockTime) const override

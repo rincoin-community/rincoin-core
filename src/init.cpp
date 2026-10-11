@@ -5,6 +5,8 @@
 
 #if defined(HAVE_CONFIG_H)
 #include <config/bitcoin-config.h>
+
+#include <cstdlib>
 #endif
 
 #include <init.h>
@@ -876,7 +878,7 @@ void InitParameterInteraction(ArgsManager& args)
 void InitLogging(const ArgsManager& args)
 {
     // MWEB: Initialize MWEB Logger
-    LoggerAPI::Initialize([](const std::string& logstr) { LogPrintf(logstr.c_str()); });
+    LoggerAPI::Initialize([](const std::string& logstr) { LogPrintf("%s",logstr.c_str()); });
 
     LogInstance().m_print_to_file = !args.IsArgNegated("-debuglogfile");
     LogInstance().m_file_path = AbsPathForConfigVal(args.GetArg("-debuglogfile", DEFAULT_DEBUGLOGFILE));
@@ -961,6 +963,45 @@ bool AppInitBasicSetup(ArgsManager& args)
 
     std::set_new_handler(new_handler_terminate);
 
+    return true;
+}
+
+// Rincoin 840k: development-build safeguard. A pre-release build
+// (CLIENT_VERSION_IS_RELEASE == false) carries consensus changes that are still
+// under test, so it refuses to run on mainnet unless the operator sets
+// RINCOIN_TESTING_ALLOW_MAINNET=1 in the *process environment* -- deliberately
+// not a -flag or rincoin.conf setting, so it cannot be set once and forgotten.
+// Release builds (release candidates and final releases) do not have this
+// check at all; nothing else differs between the two.
+//
+// Deliberately NOT inside AppInitParameterInteraction(): that function is
+// also invoked directly by the unit test harness
+// (test/util/setup_common.cpp, BasicTestingSetup, which defaults to
+// mainnet) purely for its parameter-interaction side effects, with its
+// return value ignored -- putting the guard there would spam every unit
+// test's log with this error without actually gating anything. Callers:
+// bitcoind.cpp and qt/bitcoin.cpp, each immediately after SelectParams()
+// succeeds, before any datadir lock, chainstate, or network activity.
+bool CheckMainnetTestingGuard()
+{
+    if (CLIENT_VERSION_IS_RELEASE) {
+        return true;
+    }
+    const CChainParams& chainparams = Params();
+    if (chainparams.NetworkIDString() != CBaseChainParams::MAIN) {
+        return true;
+    }
+    const char* allow_mainnet = std::getenv("RINCOIN_TESTING_ALLOW_MAINNET");
+    const bool allowed = allow_mainnet != nullptr && std::string(allow_mainnet) == "1";
+    if (!allowed) {
+        return InitError(_(
+            "This is a pre-release development build that changes consensus rules at block "
+            "height 840,000. It refuses to run on mainnet unless RINCOIN_TESTING_ALLOW_MAINNET=1 "
+            "is set in the process environment. This is not a command-line flag or config file "
+            "setting by design. If you intended to run on testnet/regtest/preview, check your "
+            "-chain/-testnet/-regtest/-preview selection."
+        ));
+    }
     return true;
 }
 
@@ -1431,6 +1472,12 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
 
     // sanitize comments per BIP-0014, format user agent and check total size
     std::vector<std::string> uacomments;
+    // Rincoin: a pre-release build identifies itself in the P2P-visible
+    // subversion string (e.g. "/RincoinCommunityCore:1.2.0(beta.1)/") so that it
+    // is recognizable in getpeerinfo and logs. Release builds add nothing.
+    if (!CLIENT_VERSION_IS_RELEASE && !CLIENT_DEV_LABEL.empty()) {
+        uacomments.push_back(CLIENT_DEV_LABEL);
+    }
     for (const std::string& cmt : args.GetArgs("-uacomment")) {
         if (cmt != SanitizeString(cmt, SAFE_CHARS_UA_COMMENT))
             return InitError(strprintf(_("User Agent comment (%s) contains unsafe characters."), cmt));

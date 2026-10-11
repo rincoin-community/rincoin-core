@@ -561,5 +561,32 @@
     "return_code": 1,
     "error_txt": "error: Uncompressed pubkeys are not useable for SegWit outputs",
     "description": "Ensure adding witness outputs with uncompressed pubkeys fails"
+  },
+  { "exec": "./rincoin-tx",
+    "args": ["-signheight=839999", "-create", "in=6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7:0", "outaddr=0.001:RMFHsuzARbUB56FFzFYjtLQEWTPWH5fTVy", "set=privatekeys:[\"Utsv1mH55bbWfpseVqtcupbpeXdQyvaJjS3tPoGWVEVPkbATC9KD\"]", "set=prevtxs:[{\"txid\":\"6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7\",\"vout\":0,\"scriptPubKey\":\"76a914de736b3d500e1140802e8c90adc6c9c20316004088ac\",\"amount\":1.5}]", "sign=ALL"],
+    "output_cmp": "txsignheight839999.hex",
+    "description": "Signs a P2PKH input for a block below the height-840,000 transition: the historical signature (SIGHASH_ALL)"
+  },
+  { "exec": "./rincoin-tx",
+    "args": ["-signheight=840000", "-create", "in=6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7:0", "outaddr=0.001:RMFHsuzARbUB56FFzFYjtLQEWTPWH5fTVy", "set=privatekeys:[\"Utsv1mH55bbWfpseVqtcupbpeXdQyvaJjS3tPoGWVEVPkbATC9KD\"]", "set=prevtxs:[{\"txid\":\"6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7\",\"vout\":0,\"scriptPubKey\":\"76a914de736b3d500e1140802e8c90adc6c9c20316004088ac\",\"amount\":1.5}]", "sign=ALL"],
+    "output_cmp": "txsignheight840000.hex",
+    "description": "Signs the same input for the transition height: a replay-protected signature (SIGHASH_ALL|SIGHASH_FORKID, fork ID 840)"
+  },
+  { "exec": "./rincoin-tx",
+    "args": ["-json", "-signheight=840000", "-create", "in=6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7:0", "outaddr=0.001:RMFHsuzARbUB56FFzFYjtLQEWTPWH5fTVy", "set=privatekeys:[\"Utsv1mH55bbWfpseVqtcupbpeXdQyvaJjS3tPoGWVEVPkbATC9KD\"]", "set=prevtxs:[{\"txid\":\"6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7\",\"vout\":0,\"scriptPubKey\":\"76a914de736b3d500e1140802e8c90adc6c9c20316004088ac\",\"amount\":1.5}]", "sign=ALL|FORKID"],
+    "output_cmp": "txsignheight840000.json",
+    "description": "The same with the hash type named explicitly (output in json)"
+  },
+  { "exec": "./rincoin-tx",
+    "args": ["-signheight=840000", "-create", "in=6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7:0", "outaddr=0.001:RMFHsuzARbUB56FFzFYjtLQEWTPWH5fTVy", "set=privatekeys:[\"Utsv1mH55bbWfpseVqtcupbpeXdQyvaJjS3tPoGWVEVPkbATC9KD\"]", "set=prevtxs:[{\"txid\":\"6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7\",\"vout\":0,\"scriptPubKey\":\"76a914de736b3d500e1140802e8c90adc6c9c20316004088ac\"}]", "sign=ALL"],
+    "return_code": 1,
+    "error_txt": "error: prevtxs entry needs an amount to sign for the height given by -signheight",
+    "description": "From the transition height the signature hash commits to the amount of every input, so prevtxs has to give it"
+  },
+  { "exec": "./rincoin-tx",
+    "args": ["-create", "in=6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7:0", "outaddr=0.001:RMFHsuzARbUB56FFzFYjtLQEWTPWH5fTVy", "set=privatekeys:[\"Utsv1mH55bbWfpseVqtcupbpeXdQyvaJjS3tPoGWVEVPkbATC9KD\"]", "set=prevtxs:[{\"txid\":\"6c2789243608b46f750f49ff24f6f79a78c3010f7e56951e045e5b7ea5d07bf7\",\"vout\":0,\"scriptPubKey\":\"76a914de736b3d500e1140802e8c90adc6c9c20316004088ac\",\"amount\":1.5}]", "sign=ALL|FORKID"],
+    "return_code": 1,
+    "error_txt": "error: a FORKID signature hash type needs -signheight at or above the transition height",
+    "description": "A FORKID hash type is refused when signing for a height below the transition (here: no height given)"
   }
 ]

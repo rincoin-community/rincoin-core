@@ -25,6 +25,20 @@
 #include <algorithm>
 #include <utility>
 
+static size_t GetMWEBInputCount(const CTransaction& tx)
+{
+    return tx.HasMWEBTx() ? tx.mweb_tx.m_transaction->GetInputs().size() : 0;
+}
+
+const CScript COINBASE_FLAGS = CScript() << std::vector<unsigned char>{'/', 'R', 'C', 'C', '/'};
+
+/** Append COINBASE_FLAGS to a coinbase scriptSig that already holds the height and extra nonce. */
+static CScript WithCoinbaseFlags(CScript script)
+{
+    script.insert(script.end(), COINBASE_FLAGS.begin(), COINBASE_FLAGS.end());
+    return script;
+}
+
 int64_t UpdateTime(CBlockHeader* pblock, const Consensus::Params& consensusParams, const CBlockIndex* pindexPrev)
 {
     int64_t nOldTime = pblock->nTime;
@@ -86,11 +100,13 @@ BlockAssembler::BlockAssembler(const CTxMemPool& mempool, const CChainParams& pa
 void BlockAssembler::resetBlock()
 {
     inBlock.clear();
+    m_stale_sig_fork.clear();
 
     // Reserve space for coinbase tx
     nBlockWeight = 4000;
     nBlockSigOpsCost = 400;
     nBlockMWEBWeight = 0;
+    nBlockMWEBInputs = 0;
     fIncludeWitness = false;
     fIncludeMWEB = false;
 
@@ -154,6 +170,8 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
         mweb_miner.NewBlock(nHeight);
     }
 
+    ExcludeStaleSigForkTransactions();
+
     int nPackagesSelected = 0;
     int nDescendantsUpdated = 0;
     addPackageTxs(nPackagesSelected, nDescendantsUpdated);
@@ -175,7 +193,7 @@ std::unique_ptr<CBlockTemplate> BlockAssembler::CreateNewBlock(const CScript& sc
     coinbaseTx.vout.resize(1);
     coinbaseTx.vout[0].scriptPubKey = scriptPubKeyIn;
     coinbaseTx.vout[0].nValue = nFees + GetBlockSubsidy(nHeight, chainparams.GetConsensus());
-    coinbaseTx.vin[0].scriptSig = CScript() << nHeight << OP_0;
+    coinbaseTx.vin[0].scriptSig = WithCoinbaseFlags(CScript() << nHeight << OP_0);
     pblock->vtx[0] = MakeTransactionRef(std::move(coinbaseTx));
     pblocktemplate->vchCoinbaseCommitment = GenerateCoinbaseCommitment(*pblock, pindexPrev, chainparams.GetConsensus());
     pblocktemplate->vTxFees[0] = -nFees;
@@ -225,6 +243,12 @@ bool BlockAssembler::TestPackage(uint64_t packageSize, int64_t packageSigOpsCost
     return true;
 }
 
+bool BlockAssembler::TestPackageMWEBInputs(uint64_t packageMWEBInputs) const
+{
+    return nBlockMWEBInputs <= mw::MAX_NUM_INPUTS &&
+           packageMWEBInputs <= mw::MAX_NUM_INPUTS - nBlockMWEBInputs;
+}
+
 // Perform transaction-level checks before adding to block:
 // - transaction finality (locktime)
 // - premature witness (in case segwit transactions are added to mempool before
@@ -254,23 +278,38 @@ bool BlockAssembler::AddToBlock(CTxMemPool::txiter iter)
 
     CTransactionRef pTx = iter->GetSharedTx();
     if (!pTx->IsMWEBOnly()) {
+        CAmount hogex_fee = 0;
+        int64_t hogex_sigops = 0;
+
         if (pTx->HasMWEBTx()) {
+            const auto tx_fee = pTx->mweb_tx.GetFee();
+            if (!tx_fee || *tx_fee > iter->GetFee()) {
+                LogPrintf("Invalid MWEB fee amount\n");
+                return false;
+            }
+
+            hogex_fee = *tx_fee;
+            hogex_sigops = MWEB::Miner::GetHogExSigOpCost(*pTx);
+            if (hogex_sigops > iter->GetSigOpCost()) {
+                LogPrintf("Invalid MWEB sigop cost\n");
+                return false;
+            }
+
             CMutableTransaction mutable_tx(*pTx);
             mutable_tx.mweb_tx.SetNull();
             pTx = MakeTransactionRef(std::move(mutable_tx));
         }
 
         pblocktemplate->block.vtx.emplace_back(pTx);
-        // MWEB: Should probably recalculate fee (for vTxFees) and sigopcost (for vTxSigOpsCost) without MWEB data?
-        // Then we could use actual fee and sigop cost for hogex.
-        pblocktemplate->vTxFees.push_back(iter->GetFee());
-        pblocktemplate->vTxSigOpsCost.push_back(iter->GetSigOpCost());
+        pblocktemplate->vTxFees.push_back(iter->GetFee() - hogex_fee);
+        pblocktemplate->vTxSigOpsCost.push_back(iter->GetSigOpCost() - hogex_sigops);
         ++nBlockTx;
     }
 
     nBlockWeight += iter->GetTxWeight();
     nBlockSigOpsCost += iter->GetSigOpCost();
     nBlockMWEBWeight += iter->GetMWEBWeight();
+    nBlockMWEBInputs += GetMWEBInputCount(iter->GetTx());
     nFees += iter->GetFee();
     inBlock.insert(iter);
 
@@ -348,13 +387,48 @@ void BlockAssembler::SortForBlock(const CTxMemPool::setEntries& package, std::ve
 // Each time through the loop, we compare the best transaction in
 // mapModifiedTxs with the next transaction in the mempool to decide what
 // transaction package to work on next.
+void BlockAssembler::ExcludeStaleSigForkTransactions()
+{
+    const Consensus::Params& consensus = chainparams.GetConsensus();
+    if (nHeight < consensus.nS6bHeight) return;
+
+    // A mempool entry was checked against the regime of the block that was next when it
+    // was accepted, which is its entry height plus one. Only entries whose next block was
+    // still below the transition height can be stale; RemoveForSigForkBoundary() normally
+    // removed them when the tip crossed it, so this loop usually finds nothing to look at.
+    std::vector<CTxMemPool::txiter> stale_candidates;
+    for (CTxMemPool::txiter it = m_mempool.mapTx.begin(); it != m_mempool.mapTx.end(); ++it) {
+        if (static_cast<int64_t>(it->GetHeight()) + 1 < consensus.nS6bHeight) {
+            stale_candidates.push_back(it);
+        }
+    }
+    if (stale_candidates.empty()) return;
+
+    CCoinsViewMemPool viewMemPool(&::ChainstateActive().CoinsTip(), m_mempool);
+    CCoinsViewCache view(&viewMemPool);
+    for (CTxMemPool::txiter it : stale_candidates) {
+        const CTransaction& tx = it->GetTx();
+        if (tx.IsMWEBOnly()) continue;
+        // Unavailable inputs mean this entry cannot go into a block either way.
+        if (!view.HaveInputs(tx) || !CheckInputsForSigForkRegime(tx, view, consensus, nHeight)) {
+            m_stale_sig_fork.insert(it);
+        }
+    }
+    if (!m_stale_sig_fork.empty()) {
+        LogPrintf("CreateNewBlock(): leaving out %u mempool transaction(s) signed for the other side of the height-%d transition\n",
+                  m_stale_sig_fork.size(), consensus.nS6bHeight);
+    }
+}
+
 void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpdated)
 {
     // mapModifiedTx will store sorted packages after they are modified
     // because some of their txs are already in the block
     indexed_modified_transaction_set mapModifiedTx;
     // Keep track of entries that failed inclusion, to avoid duplicate work
-    CTxMemPool::setEntries failedTx;
+    // (Rincoin 840k: seeded with anything left over from the other side of the
+    // transition height, so those entries are never even considered.)
+    CTxMemPool::setEntries failedTx = m_stale_sig_fork;
 
     // Start by adding all descendants of previously added txs to mapModifiedTx
     // and modifying them for their already included ancestors
@@ -450,6 +524,26 @@ void BlockAssembler::addPackageTxs(int &nPackagesSelected, int &nDescendantsUpda
         onlyUnconfirmed(ancestors);
         ancestors.insert(iter);
 
+        uint64_t packageMWEBInputs = 0;
+        for (CTxMemPool::txiter packageTx : ancestors) {
+            packageMWEBInputs += GetMWEBInputCount(packageTx->GetTx());
+        }
+
+        if (!TestPackageMWEBInputs(packageMWEBInputs)) {
+            if (fUsingModified) {
+                mapModifiedTx.get<ancestor_score>().erase(modit);
+                failedTx.insert(iter);
+            }
+
+            ++nConsecutiveFailed;
+
+            if (nConsecutiveFailed > MAX_CONSECUTIVE_FAILURES && nBlockWeight >
+                    nBlockMaxWeight - 4000) {
+                break;
+            }
+            continue;
+        }
+
         // Test if all tx's are Final, and none have failed
         if (!TestPackageTransactions(ancestors, failedTx)) {
             if (fUsingModified) {
@@ -503,7 +597,7 @@ void IncrementExtraNonce(CBlock* pblock, const CBlockIndex* pindexPrev, unsigned
     ++nExtraNonce;
     unsigned int nHeight = pindexPrev->nHeight+1; // Height first in coinbase required for block.version=2
     CMutableTransaction txCoinbase(*pblock->vtx[0]);
-    txCoinbase.vin[0].scriptSig = (CScript() << nHeight << CScriptNum(nExtraNonce));
+    txCoinbase.vin[0].scriptSig = WithCoinbaseFlags(CScript() << nHeight << CScriptNum(nExtraNonce));
     assert(txCoinbase.vin[0].scriptSig.size() <= 100);
 
     pblock->vtx[0] = MakeTransactionRef(std::move(txCoinbase));

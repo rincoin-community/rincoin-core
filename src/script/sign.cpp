@@ -14,7 +14,20 @@
 
 typedef std::vector<unsigned char> valtype;
 
-MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMutableTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn) : txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn) {}
+MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMutableTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn, int nHashTypeIn) : txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn, m_txdata) {}
+
+MutableTransactionSignatureCreator::MutableTransactionSignatureCreator(const CMutableTransaction* txToIn, unsigned int nInIn, const CAmount& amountIn,
+                                                                         const SigForkId& sig_fork_id, bool sig_fork_id_active,
+                                                                         int nHashTypeIn)
+    // Rincoin 840k: m_txdata is constructed before checker (see the member
+    // declaration order in sign.h), so it is safe to bind checker to it here in the
+    // initializer list. SetSigForkId() below then changes the same object checker
+    // already points at, and every later use of checker (ProduceSignature() verifies
+    // what it produced) sees the same regime the signature was created for.
+    : txTo(txToIn), nIn(nInIn), nHashType(nHashTypeIn), amount(amountIn), checker(txTo, nIn, amountIn, m_txdata)
+{
+    m_txdata.SetSigForkId(sig_fork_id, sig_fork_id_active);
+}
 
 bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provider, std::vector<unsigned char>& vchSig, const CKeyID& address, const CScript& scriptCode, SigVersion sigversion) const
 {
@@ -26,10 +39,19 @@ bool MutableTransactionSignatureCreator::CreateSig(const SigningProvider& provid
     if (sigversion == SigVersion::WITNESS_V0 && !key.IsCompressed())
         return false;
 
-    uint256 hash = SignatureHash(scriptCode, *txTo, nIn, nHashType, amount, sigversion);
+    // Rincoin 840k: a SIGHASH_FORKID signature is never produced where the
+    // transition is not in force (it would be a non-standard historical signature).
+    if (!m_txdata.m_sig_fork_id_active && (nHashType & SIGHASH_FORKID)) return false;
+
+    // Rincoin 840k: where the transition is in force every signature is a
+    // replay-protected one, whatever hash type the caller asked for. m_txdata is
+    // inactive unless the second constructor above was used, so this is byte-identical
+    // to the historical call for every caller that does not pass the regime.
+    const int hash_type = m_txdata.m_sig_fork_id_active ? (nHashType | SIGHASH_FORKID) : nHashType;
+    uint256 hash = SignatureHash(scriptCode, *txTo, nIn, hash_type, amount, sigversion, &m_txdata);
     if (!key.Sign(hash, vchSig))
         return false;
-    vchSig.push_back((unsigned char)nHashType);
+    vchSig.push_back((unsigned char)hash_type);
     return true;
 }
 
@@ -288,7 +310,8 @@ struct Stacks
 }
 
 // Extracts signatures and scripts from incomplete scriptSigs. Please do not extend this, use PSBT instead
-SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout)
+SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nIn, const CTxOut& txout,
+                                  const SigForkId* sig_fork_id, bool sig_fork_id_active)
 {
     SignatureData data;
     assert(tx.vin.size() > nIn);
@@ -297,7 +320,13 @@ SignatureData DataFromTransaction(const CMutableTransaction& tx, unsigned int nI
     Stacks stack(data);
 
     // Get signatures
-    MutableTransactionSignatureChecker tx_checker(&tx, nIn, txout.nValue);
+    // Rincoin 840k: check them under the regime they were made for. A co-signer's
+    // signature that does not verify here is not carried over into the result.
+    PrecomputedTransactionData txdata;
+    if (sig_fork_id) txdata.SetSigForkId(*sig_fork_id, sig_fork_id_active);
+    MutableTransactionSignatureChecker tx_checker = sig_fork_id ?
+        MutableTransactionSignatureChecker(&tx, nIn, txout.nValue, txdata) :
+        MutableTransactionSignatureChecker(&tx, nIn, txout.nValue);
     SignatureExtractorChecker extractor_checker(data, tx_checker);
     if (VerifyScript(data.scriptSig, txout.scriptPubKey, &data.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, extractor_checker)) {
         data.complete = true;
@@ -477,13 +506,20 @@ bool IsSegWitOutput(const SigningProvider& provider, const CScript& script)
     return false;
 }
 
-bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, int nHashType, std::map<int, std::string>& input_errors)
+bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, const std::map<COutPoint, Coin>& coins, int nHashType, std::map<int, std::string>& input_errors,
+                      const SigForkId* sig_fork_id, bool sig_fork_id_active)
 {
-    bool fHashSingle = ((nHashType & ~SIGHASH_ANYONECANPAY) == SIGHASH_SINGLE);
+    bool fHashSingle = ((nHashType & ~(SIGHASH_ANYONECANPAY | SIGHASH_FORKID)) == SIGHASH_SINGLE);
 
     // Use CTransaction for the constant parts of the
     // transaction to avoid rehashing.
     const CTransaction txConst(mtx);
+    // Rincoin 840k: the VerifyScript() call below has to check under the same
+    // regime the signatures were created for.
+    PrecomputedTransactionData verify_txdata;
+    if (sig_fork_id) {
+        verify_txdata.SetSigForkId(*sig_fork_id, sig_fork_id_active);
+    }
     // Sign what we can:
     for (unsigned int i = 0; i < mtx.vin.size(); i++) {
         CTxIn& txin = mtx.vin[i];
@@ -495,22 +531,27 @@ bool SignTransaction(CMutableTransaction& mtx, const SigningProvider* keystore, 
         const CScript& prevPubKey = coin->second.out.scriptPubKey;
         const CAmount& amount = coin->second.out.nValue;
 
-        SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out);
+        SignatureData sigdata = DataFromTransaction(mtx, i, coin->second.out, sig_fork_id, sig_fork_id_active);
         // Only sign SIGHASH_SINGLE if there's a corresponding output:
         if (!fHashSingle || (i < mtx.vout.size())) {
-            ProduceSignature(*keystore, MutableTransactionSignatureCreator(&mtx, i, amount, nHashType), prevPubKey, sigdata);
+            if (sig_fork_id) {
+                ProduceSignature(*keystore, MutableTransactionSignatureCreator(&mtx, i, amount, *sig_fork_id, sig_fork_id_active, nHashType), prevPubKey, sigdata);
+            } else {
+                ProduceSignature(*keystore, MutableTransactionSignatureCreator(&mtx, i, amount, nHashType), prevPubKey, sigdata);
+            }
         }
 
         UpdateInput(txin, sigdata);
 
-        // amount must be specified for valid segwit signature
-        if (amount == MAX_MONEY && !txin.scriptWitness.IsNull()) {
+        // amount must be specified for valid segwit signature, and from the height-840,000
+        // transition for every signature: the replay-protected signature hash commits to it
+        if (amount == MAX_MONEY && (!txin.scriptWitness.IsNull() || (sig_fork_id && sig_fork_id_active))) {
             input_errors[i] = "Missing amount";
             continue;
         }
 
         ScriptError serror = SCRIPT_ERR_OK;
-        if (!VerifyScript(txin.scriptSig, prevPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, TransactionSignatureChecker(&txConst, i, amount), &serror)) {
+        if (!VerifyScript(txin.scriptSig, prevPubKey, &txin.scriptWitness, STANDARD_SCRIPT_VERIFY_FLAGS, TransactionSignatureChecker(&txConst, i, amount, verify_txdata), &serror)) {
             if (serror == SCRIPT_ERR_INVALID_STACK_OPERATION) {
                 // Unable to sign input and verification failed (possible attempt to partially sign).
                 input_errors[i] = "Unable to sign input, invalid stack size (possibly missing key)";

@@ -86,7 +86,8 @@ BOOST_AUTO_TEST_CASE(block_subsidy_test)
 {
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     CheckSubsidySchedule(chainParams->GetConsensus().nSubsidyHalvingInterval); // As in main
-    CheckSubsidySchedule(150);  // As in regtest
+    CheckSubsidySchedule(210);  // As in regtest and preview
+    CheckSubsidySchedule(2100); // As in testnet
     CheckSubsidySchedule(1000); // Just another interval
 }
 
@@ -109,6 +110,17 @@ BOOST_AUTO_TEST_CASE(block_subsidy_monotonic_test)
 
 BOOST_AUTO_TEST_CASE(subsidy_limit_test)
 {
+    // Rincoin: mainnet follows the S6/b schedule from height 840,000 (see
+    // s6b_subsidy_tests.cpp for the schedule itself). This loop samples every
+    // 1000th height below 56,000,000; every S6/b boundary is a multiple of 1000,
+    // so the sampled sum is exact for that range:
+    //   below 840,000:             (50 + 25 + 12.5 + 6.25) RIN x 210,000 = 19,687,500 RIN
+    //   840,000 .. 2,099,999:      4 RIN x 1,260,000                     =  5,040,000 RIN
+    //   2,100,000 .. 4,199,999:    2 RIN x 2,100,000                     =  4,200,000 RIN
+    //   4,200,000 .. 6,299,999:    1 RIN x 2,100,000                     =  2,100,000 RIN
+    //   6,300,000 .. 55,999,999:   0.6 RIN x 49,700,000                  = 29,820,000 RIN
+    //   total                                                            = 60,847,500 RIN
+    // (the historical pure-halving rule gave 2099999997690000 base units here).
     const auto chainParams = CreateChainParams(*m_node.args, CBaseChainParams::MAIN);
     CAmount nSum = 0;
     for (int nHeight = 0; nHeight < 56000000; nHeight += 1000) {
@@ -117,7 +129,7 @@ BOOST_AUTO_TEST_CASE(subsidy_limit_test)
         nSum += nSubsidy * 1000;
         BOOST_CHECK(MoneyRange(nSum));
     }
-    BOOST_CHECK_EQUAL(nSum, CAmount{2099999997690000});
+    BOOST_CHECK_EQUAL(nSum, CAmount{6084750000000000});
 }
 
 BOOST_AUTO_TEST_CASE(block_subsidy_mainnet_spot_check)

@@ -45,6 +45,8 @@ private:
     };
 
     size_t couldSignInputs(const PartiallySignedTransaction &psbtx);
+    //! Rincoin 840k: whether a transaction confirmed in the next block signs with sig_fork_id.
+    bool sigForkIdActive() const;
     void updateTransactionDisplay();
     std::string renderTransaction(const PartiallySignedTransaction &psbtx);
     void showStatus(const QString &msg, StatusLevel level);
