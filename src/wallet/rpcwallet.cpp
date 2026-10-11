@@ -3533,6 +3533,12 @@ RPCHelpMan signrawtransactionwithwallet()
     if (!wallet) return NullUniValue;
     const CWallet* const pwallet = wallet.get();
 
+    // The signature regime of the height-840,000 transition is taken from the last block the
+    // wallet has processed (CWallet::SignTransaction, FillPSBT). Wait until the wallet has caught
+    // up with the chain, so that a call made right after a block connects signs for the block that
+    // really comes next and not for the one before it.
+    pwallet->BlockUntilSyncedToCurrentChain();
+
     RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VARR, UniValue::VSTR}, true);
 
     CMutableTransaction mtx;
@@ -4306,6 +4312,12 @@ static RPCHelpMan send()
             if (!wallet) return NullUniValue;
             CWallet* const pwallet = wallet.get();
 
+            // The signature regime of the height-840,000 transition is taken from the last block the
+            // wallet has processed (CWallet::SignTransaction, FillPSBT). Wait until the wallet has caught
+            // up with the chain, so that a call made right after a block connects signs for the block that
+            // really comes next and not for the one before it.
+            pwallet->BlockUntilSyncedToCurrentChain();
+
             UniValue options{request.params[4].isNull() ? UniValue::VOBJ : request.params[4]};
             if (options.exists("conf_target") || options.exists("estimate_mode")) {
                 if (!request.params[1].isNull() || !request.params[2].isNull()) {
@@ -4511,6 +4523,12 @@ static RPCHelpMan walletprocesspsbt()
     std::shared_ptr<CWallet> const wallet = GetWalletForJSONRPCRequest(request);
     if (!wallet) return NullUniValue;
     const CWallet* const pwallet = wallet.get();
+
+    // The signature regime of the height-840,000 transition is taken from the last block the
+    // wallet has processed (CWallet::SignTransaction, FillPSBT). Wait until the wallet has caught
+    // up with the chain, so that a call made right after a block connects signs for the block that
+    // really comes next and not for the one before it.
+    pwallet->BlockUntilSyncedToCurrentChain();
 
     RPCTypeCheck(request.params, {UniValue::VSTR, UniValue::VBOOL, UniValue::VSTR});
 
