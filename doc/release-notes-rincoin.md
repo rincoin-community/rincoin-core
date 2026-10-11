@@ -18,23 +18,40 @@ corresponds to the Litecoin `v0.21.4` base.
 
 ---
 
-## 1.2.0 release candidate 1 (`v1.2.0rc1`)
+## 1.2.0 (`v1.2.0`)
 
-> **Status: release candidate.** `v1.2.0rc1` follows `v1.2.0-beta.1` after several days
-> of testing in which no defect was found in the project's tests and none was reported
-> by users. Its consensus rules are the ones of the beta; what changed since then is
-> listed below. It is meant to become the stable 1.2.0 release unless testing of this
-> candidate turns something up.
+> **Status: stable release.** `v1.2.0` is the release of Rincoin Community Core for the
+> consensus transition at block height 840,000. Nodes, pools, exchanges and wallet
+> services that follow Rincoin Community Core have to run it before that height;
+> 1.1.0 stops at block 839,999 by design. Upgrading from 1.1.0 or from a release
+> candidate is a binary replacement: the data directory is opened as it is, without a
+> reindex.
 >
-> It runs on mainnet like any release, without the testing guard of the beta, and
-> announces itself as `/RincoinCommunityCore:1.2.0/`. Operators of pools, exchanges and
-> payment services, and holders of larger amounts, may prefer to wait for the stable
-> release or to run this candidate next to their current node first.
+> It follows `v1.2.0rc1` of 2026-09-30 and differs from it by one wallet fix, listed
+> below. Tests of `v1.2.0rc1` since its release, among them the upgrade of a node that
+> 1.1.0 has stopped at the transition height and a testnet chain run through its
+> transition height 8,400, found no defect, and none was reported by users; no change
+> to the code came out of them. The consensus rules are the ones of
+> `v1.2.0-beta.1` and `v1.2.0rc1`.
+>
+> The node announces itself as `/RincoinCommunityCore:1.2.0/`, as the release candidate
+> did. What operators should do before, at and after the height is described in the
+> [operator runbook](https://github.com/rincoin-community/consensus-840k/blob/main/technology/transition-runbook.md).
 >
 > Please report problems at
 > <https://github.com/rincoin-community/rincoin-core/issues>.
 
-Changes since `v1.2.0-beta.1`:
+Changes since `v1.2.0rc1`:
+
+- `send`, `signrawtransactionwithwallet` and `walletprocesspsbt` now wait until the
+  wallet has processed every block the node has connected before they sign, as
+  `sendtoaddress`, `sendmany` and `bumpfee` already did. The wallet takes the signature
+  regime of the height-840,000 transition from the last block it has processed. A call
+  made in the moment after block 839,999 connects could otherwise sign for the old rules,
+  and `send` would report a transaction that the node then refuses. Nothing changes for
+  calls made at any other time.
+
+Changes in `v1.2.0rc1` since `v1.2.0-beta.1`:
 
 - A release build: no mainnet guard, no pre-release label in the user agent.
 - Mainnet `nMinimumChainWork`, `defaultAssumeValid` and chain statistics set from

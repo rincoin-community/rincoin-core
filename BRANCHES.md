@@ -24,7 +24,7 @@ Contributors should base new work on `dev` unless an issue or pull request speci
 
 It is updated from `dev` when a release is prepared, and release tags are created on it. Between releases it changes only for fixes to the released version.
 
-Because the currently shipping release is the terminal `legacy-1.1` build (see below), `master` presently tracks the line from which the **next** production release will be built rather than the binary running today. That exception ends with the first non-terminal release.
+Until `v1.2.0` the shipping release was the terminal `legacy-1.1` build (see below), and `master` tracked the line from which the next production release would be built. With `v1.2.0`, the first release after it that does not stop at a fixed height, `master` tracks the released software.
 
 For deployed nodes, prefer a published release from the [releases page](https://github.com/rincoin-community/rincoin-core/releases) over building any branch.
 
