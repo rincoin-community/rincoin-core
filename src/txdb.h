@@ -6,6 +6,7 @@
 #ifndef BITCOIN_TXDB_H
 #define BITCOIN_TXDB_H
 
+#include <clientversion.h>
 #include <coins.h>
 #include <dbwrapper.h>
 #include <chain.h>
@@ -111,7 +112,17 @@ public:
     void ReadReindexing(bool &fReindexing);
     bool WriteFlag(const std::string &name, bool fValue);
     bool ReadFlag(const std::string &name, bool &fValue);
-    bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex);
+    /**
+     * Load the block index entries. Entries from the height-840,000 transition onward
+     * that were last written by a client without its rules (an older release or another
+     * implementation, see S6B_RULES_CLIENT_VERSION) are added to entries_before_s6b_rules.
+     */
+    bool LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex, std::vector<CBlockIndex*>& entries_before_s6b_rules);
+    //! Write block index entries with another client version than this one (for upgrade tests on regtest only).
+    void SetEntryClientVersion(int client_version) { m_entry_client_version = client_version; }
+
+private:
+    int m_entry_client_version{CLIENT_VERSION};
 };
 
 #endif // BITCOIN_TXDB_H

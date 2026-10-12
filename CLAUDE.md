@@ -154,7 +154,11 @@ Rincoin behaviour", start here:
   signatures (wallet, raw-transaction and PSBT RPCs, `rincoin-tx -signheight`, the
   GUI) has to pass the regime of the confirming block. Functional tests:
   `feature_s6b_*.py`, `wallet_s6b_signing.py`, helpers in
-  `test_framework/s6b_util.py`.
+  `test_framework/s6b_util.py`. At start, blocks from that height that software
+  with other rules connected or rejected in the data directory are judged again
+  (`CChainState::RevalidateS6bBlocks()`); it recognizes them by the client version
+  that every block index entry records (`S6B_RULES_CLIENT_VERSION`), and the
+  regtest-only `-disables6b` emulates such software in tests.
 - **Peer protocol floor** — `vMinPeerProtoVersionFloors` +
   `MinPeerProtoVersionFloorAt()` in
   [src/consensus/params.h](src/consensus/params.h), enforced during the version

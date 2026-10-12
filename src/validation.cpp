@@ -4762,7 +4762,7 @@ bool BlockManager::LoadBlockIndex(
     CBlockTreeDB& blocktree,
     std::set<CBlockIndex*, CBlockIndexWorkComparator>& block_index_candidates)
 {
-    if (!blocktree.LoadBlockIndexGuts(consensus_params, [this](const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main) { return this->InsertBlockIndex(hash); }))
+    if (!blocktree.LoadBlockIndexGuts(consensus_params, [this](const uint256& hash) EXCLUSIVE_LOCKS_REQUIRED(cs_main) { return this->InsertBlockIndex(hash); }, m_entries_before_s6b_rules))
         return false;
 
     // Calculate nChainWork
@@ -4815,6 +4815,7 @@ bool BlockManager::LoadBlockIndex(
 void BlockManager::Unload() {
     m_failed_blocks.clear();
     m_blocks_unlinked.clear();
+    m_entries_before_s6b_rules.clear();
 
     for (const BlockMap::value_type& entry : m_block_index) {
         delete entry.second;
@@ -5267,6 +5268,122 @@ bool CChainState::RewindBlockIndex(const CChainParams& params)
         }
     }
 
+    return true;
+}
+
+bool CChainState::RevalidateS6bBlocks(const CChainParams& params)
+{
+    const int s6b_height = params.GetConsensus().nS6bHeight;
+    int rewind_height = std::numeric_limits<int>::max();
+    {
+        LOCK(cs_main);
+        if (m_blockman.m_entries_before_s6b_rules.empty()) return true;
+
+        // Software without the rules of this release for the transition height wrote these
+        // entries: it connected those blocks under its own rules, or marked them invalid
+        // under them. The active chain is disconnected from the lowest such block.
+        for (const CBlockIndex* pindex : m_blockman.m_entries_before_s6b_rules) {
+            if (m_chain.Contains(pindex)) rewind_height = std::min(rewind_height, pindex->nHeight);
+        }
+        LogPrintf("%s: %u block index entries from height %d were written by a client without the rules of this release for that height; the blocks are checked again\n",
+                  __func__, m_blockman.m_entries_before_s6b_rules.size(), s6b_height);
+        if (rewind_height <= m_chain.Height()) {
+            LogPrintf("%s: disconnecting the active chain from height %d (tip %d) to connect it again\n",
+                      __func__, rewind_height, m_chain.Height());
+        }
+    }
+
+    BlockValidationState state;
+    while (!ShutdownRequested()) {
+        {
+            LOCK(cs_main);
+            LOCK(m_mempool.cs);
+            CBlockIndex* tip = m_chain.Tip();
+            if (tip == nullptr || tip->nHeight < rewind_height) break;
+            if ((tip->nStatus & BLOCK_HAVE_MASK) != BLOCK_HAVE_MASK) {
+                return error("%s: block %s at height %d is no longer on disk (pruned), so it cannot be disconnected", __func__, tip->GetBlockHash().ToString(), tip->nHeight);
+            }
+            if (!DisconnectTip(state, params, nullptr)) {
+                return error("%s: unable to disconnect block at height %d (%s)", __func__, tip->nHeight, state.ToString());
+            }
+        }
+        // Make sure the queue of validation callbacks doesn't grow unboundedly.
+        LimitValidationInterfaceQueue();
+
+        if (!FlushStateToDisk(params, state, FlushStateMode::PERIODIC)) {
+            return error("%s: unable to flush state to disk (%s)", __func__, state.ToString());
+        }
+    }
+    // An interrupted rewind continues on the next start: the entries are still on disk as they were.
+    if (ShutdownRequested()) return true;
+
+    {
+        LOCK(cs_main);
+        std::set<CBlockIndex*> entries_before_s6b_rules(m_blockman.m_entries_before_s6b_rules.begin(), m_blockman.m_entries_before_s6b_rules.end());
+        std::vector<CBlockIndex*> above;
+        for (const auto& item : m_blockman.m_block_index) {
+            if (item.second->nHeight >= s6b_height) above.push_back(item.second);
+        }
+        std::sort(above.begin(), above.end(), [](const CBlockIndex* a, const CBlockIndex* b) { return a->nHeight < b->nHeight; });
+
+        // Drop invalidity that such software found, and what followed from it for the
+        // descendants; parents are handled before their children. Invalidity found by a
+        // client with the rules stays.
+        unsigned int reset = 0;
+        for (CBlockIndex* pindex : above) {
+            const uint32_t old_status = pindex->nStatus;
+            if (entries_before_s6b_rules.count(pindex)) pindex->nStatus &= ~BLOCK_FAILED_VALID;
+            const bool parent_failed = pindex->pprev && (pindex->pprev->nStatus & BLOCK_FAILED_MASK);
+            if (!parent_failed) {
+                pindex->nStatus &= ~BLOCK_FAILED_CHILD;
+            } else if (!(pindex->nStatus & BLOCK_FAILED_MASK)) {
+                pindex->nStatus |= BLOCK_FAILED_CHILD;
+            }
+            if (pindex->nStatus == old_status) continue;
+            setDirtyBlockIndex.insert(pindex);
+            if ((old_status & BLOCK_FAILED_MASK) && !(pindex->nStatus & BLOCK_FAILED_MASK)) {
+                ++reset;
+                m_blockman.m_failed_blocks.erase(pindex);
+                if (pindex->IsValid(BLOCK_VALID_TREE) && (pindexBestHeader == nullptr || CBlockIndexWorkComparator()(pindexBestHeader, pindex))) {
+                    pindexBestHeader = pindex;
+                }
+            }
+        }
+        pindexBestInvalid = nullptr;
+        for (const auto& item : m_blockman.m_block_index) {
+            CBlockIndex* pindex = item.second;
+            if ((pindex->nStatus & BLOCK_FAILED_MASK) && (!pindexBestInvalid || pindex->nChainWork > pindexBestInvalid->nChainWork)) {
+                pindexBestInvalid = pindex;
+            }
+        }
+        if (reset > 0) LogPrintf("%s: %u blocks from height %d are no longer marked invalid\n", __func__, reset, s6b_height);
+
+        // Every block that could now extend or replace the active chain is a candidate for
+        // ActivateBestChain again, as after InvalidateBlock.
+        for (const auto& item : m_blockman.m_block_index) {
+            CBlockIndex* candidate = item.second;
+            if (candidate->IsValid(BLOCK_VALID_TRANSACTIONS) && candidate->HaveTxsDownloaded() &&
+                (m_chain.Tip() == nullptr || !setBlockIndexCandidates.value_comp()(candidate, m_chain.Tip()))) {
+                setBlockIndexCandidates.insert(candidate);
+            }
+        }
+
+        // Write the entries again, now as this client: what this start has handled is not
+        // handled again on the next one. Blocks keep their validity level; whatever enters
+        // the active chain from now on is connected by this client.
+        for (CBlockIndex* pindex : m_blockman.m_entries_before_s6b_rules) {
+            setDirtyBlockIndex.insert(pindex);
+        }
+        m_blockman.m_entries_before_s6b_rules.clear();
+
+        if (m_chain.Tip() != nullptr) {
+            PruneBlockIndexCandidates();
+            CheckBlockIndex(params.GetConsensus());
+            if (!FlushStateToDisk(params, state, FlushStateMode::ALWAYS)) {
+                return error("%s: unable to flush state to disk (%s)", __func__, state.ToString());
+            }
+        }
+    }
     return true;
 }
 

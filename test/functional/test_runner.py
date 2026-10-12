@@ -203,6 +203,7 @@ BASE_SCRIPTS = [
     'feature_s6b_sighash_single.py',
     'feature_s6b_reorg.py',
     'feature_s6b_coinbase_flags.py',
+    'feature_s6b_foreign_upgrade.py',
     'example_test.py',
     'wallet_txn_doublespend.py',
     'wallet_txn_doublespend.py --descriptors',

@@ -31,6 +31,19 @@ static const char DB_LAST_BLOCK = 'l';
 
 namespace {
 
+/** A block index entry serialized as a client of another version writes it (see CBlockTreeDB::SetEntryClientVersion()). */
+struct BlockIndexEntryAsVersion {
+    const CDiskBlockIndex& entry;
+    const int client_version;
+
+    template <typename Stream>
+    void Serialize(Stream& s) const
+    {
+        OverrideStream<Stream> os(&s, s.GetType(), client_version);
+        os << entry;
+    }
+};
+
 struct CoinEntry {
     COutPoint* outpoint;
     char key;
@@ -247,7 +260,12 @@ bool CBlockTreeDB::WriteBatchSync(const std::vector<std::pair<int, const CBlockF
     }
     batch.Write(DB_LAST_BLOCK, nLastFile);
     for (std::vector<const CBlockIndex*>::const_iterator it=blockinfo.begin(); it != blockinfo.end(); it++) {
-        batch.Write(std::make_pair(DB_BLOCK_INDEX, (*it)->GetBlockHash()), CDiskBlockIndex(*it));
+        const CDiskBlockIndex entry(*it);
+        if (m_entry_client_version == CLIENT_VERSION) {
+            batch.Write(std::make_pair(DB_BLOCK_INDEX, (*it)->GetBlockHash()), entry);
+        } else {
+            batch.Write(std::make_pair(DB_BLOCK_INDEX, (*it)->GetBlockHash()), BlockIndexEntryAsVersion{entry, m_entry_client_version});
+        }
     }
     return WriteBatch(batch, true);
 }
@@ -264,7 +282,7 @@ bool CBlockTreeDB::ReadFlag(const std::string &name, bool &fValue) {
     return true;
 }
 
-bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex)
+bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, std::function<CBlockIndex*(const uint256&)> insertBlockIndex, std::vector<CBlockIndex*>& entries_before_s6b_rules)
 {
     std::unique_ptr<CDBIterator> pcursor(NewIterator());
 
@@ -294,6 +312,10 @@ bool CBlockTreeDB::LoadBlockIndexGuts(const Consensus::Params& consensusParams, 
                 pindexNew->mweb_header    = diskindex.mweb_header;
                 pindexNew->hogex_hash     = diskindex.hogex_hash;
                 pindexNew->mweb_amount    = diskindex.mweb_amount;
+
+                if (diskindex.nHeight >= consensusParams.nS6bHeight && diskindex.nClientVersion < S6B_RULES_CLIENT_VERSION) {
+                    entries_before_s6b_rules.push_back(pindexNew);
+                }
 
                 // Litecoin: Disable PoW Sanity check while loading block index from disk.
                 // We use the sha256 hash for the block index for performance reasons, which is recorded for later use.

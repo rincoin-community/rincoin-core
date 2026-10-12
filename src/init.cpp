@@ -1662,6 +1662,10 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
                 // fails if it's still open from the previous loop. Close it first:
                 pblocktree.reset();
                 pblocktree.reset(new CBlockTreeDB(nBlockTreeDBCache, false, fReset));
+                if (chainparams.NetworkIDString() == CBaseChainParams::REGTEST && args.GetBoolArg("-disables6b", false)) {
+                    // Block index entries as a release without the transition rules (1.1.0) writes them.
+                    pblocktree->SetEntryClientVersion(1010000);
+                }
 
                 if (fReset) {
                     pblocktree->WriteReindexing(true);
@@ -1774,6 +1778,15 @@ bool AppInitMain(const util::Ref& context, NodeContext& node, interfaces::BlockA
                         strLoadError = _(
                             "Unable to rewind the database to a pre-fork state. "
                             "You will need to redownload the blockchain");
+                        failed_rewind = true;
+                        break; // out of the per-chainstate loop
+                    }
+                    // Blocks from the height-840,000 transition onward that software with other
+                    // rules for it connected or rejected in this data directory are judged again.
+                    if (!chainstate->RevalidateS6bBlocks(chainparams)) {
+                        strLoadError = _(
+                            "Unable to disconnect the blocks that software with other rules for the height-840,000 transition connected. "
+                            "You will need to rebuild the database using -reindex");
                         failed_rewind = true;
                         break; // out of the per-chainstate loop
                     }

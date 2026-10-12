@@ -445,6 +445,13 @@ public:
     std::multimap<CBlockIndex*, CBlockIndex*> m_blocks_unlinked;
 
     /**
+     * Block index entries from the height-840,000 transition onward that were last
+     * written by a client without its rules (filled by LoadBlockIndex, handled and
+     * cleared by CChainState::RevalidateS6bBlocks()).
+     */
+    std::vector<CBlockIndex*> m_entries_before_s6b_rules GUARDED_BY(cs_main);
+
+    /**
      * Load the blocktree off disk and into memory. Populate certain metadata
      * per index entry (nStatus, nChainWork, nTimeMax, etc.) as well as peripheral
      * collections like setDirtyBlockIndex.
@@ -736,6 +743,19 @@ public:
     /** Replay blocks that aren't fully applied to the database. */
     bool ReplayBlocks(const CChainParams& params);
     bool RewindBlockIndex(const CChainParams& params) LOCKS_EXCLUDED(cs_main);
+
+    /**
+     * Rincoin 840k: undo what software with other rules for the height-840,000 transition
+     * (an older release or another implementation) did to this data directory from the
+     * transition height onward, so that those blocks are judged again by the rules of this
+     * release. Blocks of the active chain from the lowest such height are disconnected
+     * (ActivateBestChain connects them again, or finds them invalid), and invalidity flags
+     * that such software set are cleared. Does nothing when no block index entry from the
+     * transition height onward was written by such software, which is the case on every
+     * start after the first one. Returns false if blocks that need to be disconnected are
+     * no longer on disk (pruned).
+     */
+    bool RevalidateS6bBlocks(const CChainParams& params) LOCKS_EXCLUDED(cs_main);
     bool LoadGenesisBlock(const CChainParams& chainparams);
 
     void PruneBlockIndexCandidates();

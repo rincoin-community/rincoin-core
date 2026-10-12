@@ -749,6 +749,15 @@ public:
 
 void CRegTestParams::UpdateActivationParametersFromArgs(const ArgsManager& args)
 {
+    if (args.GetBoolArg("-disables6b", false)) {
+        // The rules before the transition, at every height: the halving schedule, the
+        // historical signature hash, and no protocol-version floor for it.
+        LogPrintf("Height-840,000 transition rules disabled for testing\n");
+        consensus.nS6bHeight = std::numeric_limits<int>::max();
+        consensus.vS6bSubsidyPhases = {{consensus.nS6bHeight, 0}};
+        consensus.vMinPeerProtoVersionFloors = {{0, 70017}};
+    }
+
     if (args.IsArgSet("-segwitheight")) {
         int64_t height = args.GetArg("-segwitheight", consensus.SegwitHeight);
         if (height < -1 || height >= std::numeric_limits<int>::max()) {

@@ -263,6 +263,7 @@ BITCOIN_TESTS =\
   test/ref_tests.cpp \
   test/reverselock_tests.cpp \
   test/rpc_tests.cpp \
+  test/s6b_blockindex_tests.cpp \
   test/s6b_sighash_tests.cpp \
   test/s6b_sign_tests.cpp \
   test/s6b_subsidy_tests.cpp \

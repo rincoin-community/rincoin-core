@@ -331,11 +331,22 @@ int64_t GetBlockProofEquivalentTime(const CBlockIndex& to, const CBlockIndex& fr
 const CBlockIndex* LastCommonAncestor(const CBlockIndex* pa, const CBlockIndex* pb);
 
 
+/**
+ * Client version of Rincoin Core 1.2.0, the first release that applies the rules of the
+ * height-840,000 transition (Consensus::Params::nS6bHeight). Every block index entry on
+ * disk carries the client version of the software that last wrote it, which is how a
+ * node tells that blocks from the transition height onward were connected (or rejected)
+ * by software with other rules for that height; see CChainState::RevalidateS6bBlocks().
+ */
+static constexpr int S6B_RULES_CLIENT_VERSION = 1020000;
+
 /** Used to marshal pointers into hashes for db storage. */
 class CDiskBlockIndex : public CBlockIndex
 {
 public:
     uint256 hashPrev;
+    //! Client version of the software that wrote this entry (set when reading it from disk)
+    int nClientVersion{0};
 
     CDiskBlockIndex() {
         hashPrev = uint256();
@@ -349,6 +360,7 @@ public:
     {
         int _nVersion = s.GetVersion();
         if (!(s.GetType() & SER_GETHASH)) READWRITE(VARINT_MODE(_nVersion, VarIntMode::NONNEGATIVE_SIGNED));
+        SER_READ(obj, obj.nClientVersion = _nVersion);
 
         READWRITE(VARINT_MODE(obj.nHeight, VarIntMode::NONNEGATIVE_SIGNED));
         READWRITE(VARINT(obj.nStatus));

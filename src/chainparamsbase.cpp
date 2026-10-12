@@ -23,6 +23,7 @@ void SetupChainParamsBaseOptions(ArgsManager& argsman)
     argsman.AddArg("-regtest", "Enter regression test mode, which uses a special chain in which blocks can be solved instantly. "
                  "This is intended for regression testing tools and app development. Equivalent to -chain=regtest.", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg("-preview", "Use the preview chain (publicly reachable rehearsal network with real PoW and the regtest schedule: mainnet heights divided by 1,000). Equivalent to -chain=preview.", ArgsManager::ALLOW_ANY, OptionsCategory::CHAINPARAMS);
+    argsman.AddArg("-disables6b", "Do not apply the rules of the height-840,000 transition at any height, and write the block index with the client version of 1.1.0, like a node that predates those rules; for upgrade tests (regtest-only)", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-segwitheight=<n>", "Set the activation height of segwit. -1 to disable. (regtest-only)", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::DEBUG_TEST);
     argsman.AddArg("-testnet", "Use the test chain. Equivalent to -chain=test.", ArgsManager::ALLOW_ANY, OptionsCategory::CHAINPARAMS);
     argsman.AddArg("-vbparams=deployment:start:end[:start_height:end_height]", "Use given start/end times and start/end block heights for specified version bits deployment (regtest-only)", ArgsManager::ALLOW_ANY | ArgsManager::DEBUG_ONLY, OptionsCategory::CHAINPARAMS);

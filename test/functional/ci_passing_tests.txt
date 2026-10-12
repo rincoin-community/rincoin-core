@@ -27,6 +27,7 @@ feature_s6b_sigforkid.py
 feature_s6b_sighash_single.py
 feature_s6b_coinbase_flags.py
 feature_s6b_reorg.py
+feature_s6b_foreign_upgrade.py
 wallet_s6b_signing.py
 wallet_s6b_boundary.py
 p2p_s6b_relay.py
