@@ -165,6 +165,9 @@ dist/
 *.background.tiff
 /tmp
 
+# linked git worktrees kept inside the repository
+/.worktree/
+
 # test/bench binaries
 /src/test/test_rincoin
 /src/bench/bench_rincoin
