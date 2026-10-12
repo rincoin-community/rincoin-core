@@ -18,6 +18,62 @@ corresponds to the Litecoin `v0.21.4` base.
 
 ---
 
+## 1.2.1 (`v1.2.1`)
+
+> **Status: stable release.** `v1.2.1` is a maintenance release of the 1.2 line for the
+> consensus transition at block height 840,000. The consensus rules are those of 1.2.0.
+> Upgrading from 1.2.0, from 1.1.0 or from a 1.2.0 pre-release is a binary replacement:
+> the data directory is opened as it is, without a reindex. Nodes that run 1.2.0 do not
+> need to upgrade before the height; nodes that do not run 1.2.0 yet should install 1.2.1
+> instead.
+>
+> What operators should do before, at and after the height is described in the
+> [operator runbook](https://github.com/rincoin-community/consensus-840k/blob/main/technology/transition-runbook.md).
+> Please report problems at
+> <https://github.com/rincoin-community/rincoin-core/issues>.
+
+Changes since `v1.2.0`:
+
+- **A node that ran other software past the transition height gets onto the 1.2 chain
+  by itself.** When a data directory was used from height 840,000 on by software with
+  other rules for that height (a 1.0.x release with the previous subsidy schedule, or
+  another implementation), that software connected its own blocks there, and when it
+  saw the blocks of the 1.2 chain it recorded them as invalid. 1.2.0 opened such a data
+  directory as it was and stayed on the other chain whenever it had seen the 1.2 chain
+  (the remedy was `-reindex`, or `invalidateblock` and `reconsiderblock`). At its first
+  start, 1.2.1 now judges again everything such software did from the transition
+  height: it disconnects the active chain from the lowest block that such software
+  connected, forgets the invalidity that such software found there, and lets the node
+  choose its chain again under the 1.2 rules, which takes the 1.2 chain. Blocks are not
+  downloaded again where they are on disk. The same holds for a 1.1.0 node with a block
+  840,000 stored, and for `-reindex-chainstate`.
+
+  The node tells such blocks apart by the client version that every block index entry
+  on disk records for the software that wrote it: entries from the transition height
+  on that were written by a client version below 1.2.0 are judged again. A node that
+  has only run 1.2.0 or later from the transition height on does nothing at start, also
+  when it upgrades from 1.2.0 after the height. The work happens once; the entries are
+  then written again by 1.2.1. A pruned node that no longer has the blocks to
+  disconnect stops at start and asks for `-reindex`. (Software of another
+  implementation that reported a client version of 1.2.0 or higher would be taken for
+  a release with these rules; the implementations known today report lower versions.)
+
+- **Release binaries report their version.** The Linux binaries of 1.2.0 report
+  `v1.2.0.0-unk` instead of `v1.2.0`: the image they were built in had no git, so the
+  build could not read the tag. The images now have git, and `contrib/build_release.sh`
+  tags each builder image with a hash of its recipe, so that a changed recipe always
+  gets a fresh image instead of an older one left behind on the build machine. A build
+  of a tag reports the tag (`v1.2.1`), any other build its commit
+  (`v1.2.1.0-<commit>`). A local build from a linked git worktree now reports its
+  commit as well.
+
+- Tests: `feature_s6b_foreign_upgrade.py` and the regtest-only debug option
+  `-disables6b`, which makes a node apply the rules from before the transition at
+  every height and write its block index as 1.1.0 does, to emulate older software in
+  upgrade tests.
+
+---
+
 ## 1.2.0 (`v1.2.0`)
 
 > **Status: stable release.** `v1.2.0` is the release of Rincoin Community Core for the

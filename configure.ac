@@ -1,5 +1,5 @@
 AC_PREREQ([2.69])
-dnl Rincoin Community Core 1.2.0 development line (height-840,000 transition).
+dnl Rincoin Community Core 1.2 line (height-840,000 transition).
 dnl _CLIENT_VERSION_IS_RELEASE stays false until a release candidate is cut: a
 dnl pre-release build prints the usual "pre-release test build" warning, reports
 dnl its commit in the version string (v1.2.0.0-<commit>), adds the development
@@ -8,7 +8,7 @@ dnl mainnet without RINCOIN_TESTING_ALLOW_MAINNET=1 (see src/init.cpp). A releas
 dnl candidate sets _CLIENT_VERSION_RC and flips _CLIENT_VERSION_IS_RELEASE to true.
 define(_CLIENT_VERSION_MAJOR, 1)
 define(_CLIENT_VERSION_MINOR, 2)
-define(_CLIENT_VERSION_REVISION, 0)
+define(_CLIENT_VERSION_REVISION, 1)
 define(_CLIENT_VERSION_BUILD, 0)
 define(_CLIENT_VERSION_RC, 0)
 define(_CLIENT_VERSION_IS_RELEASE, true)

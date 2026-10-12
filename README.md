@@ -29,6 +29,16 @@ Rincoin is developed openly through **Rincoin Community Forge**, the engineering
 
 Open participation does not mean unstructured development. Changes are expected to undergo review and testing appropriate to their impact, and consensus-sensitive changes require explicit technical scrutiny. Rincoin Community Forge develops and publishes software and proposals; adoption of consensus changes remains a decision of network participants.
 
+## Block height 840,000
+
+Rincoin Community Core 1.2 implements the consensus transition at block height **840,000**. Run
+**1.2.0 or later** before that height; 1.1.0 stops at block 839,999 by design. A node that already
+runs 1.2.0 does not need to upgrade for the transition. A node that is upgraded only after the
+height, from a 1.0.x release or from another implementation, should go straight to **1.2.1 or
+later**: at its first start it drops what that software did from the height on and moves onto the
+1.2 chain by itself. See the [release notes](doc/release-notes-rincoin.md) and the
+[operator runbook](https://github.com/rincoin-community/consensus-840k/blob/main/technology/transition-runbook.md).
+
 ## Current consensus review
 
 *Rincoin is currently conducting a public review of the consensus decision at block height **840,000**.*
