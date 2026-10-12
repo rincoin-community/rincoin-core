@@ -209,12 +209,31 @@ clean_cache() {
 
     if [ "$CLEAN_IMAGES" = "true" ]; then
         print_info "Cleaning Docker images..."
-        docker rmi rincoin-builder:linux-x86_64-ubuntu20 2>/dev/null || true
-        docker rmi rincoin-builder:linux-x86_64-ubuntu24 2>/dev/null || true
-        docker rmi rincoin-builder:linux-aarch64-ubuntu20 2>/dev/null || true
-        docker rmi rincoin-builder:linux-aarch64-ubuntu24 2>/dev/null || true
-        docker rmi rincoin-builder:windows 2>/dev/null || true
+        # The images of this script, tagged by recipe (see builder_image), and the
+        # fixed tags that older versions of it used. Other rincoin-builder tags stay.
+        local image
+        for image in $(docker images --format '{{.Repository}}:{{.Tag}}' rincoin-builder 2>/dev/null |
+                       grep -E '^rincoin-builder:((linux-[a-z0-9_]+-ubuntu[0-9]+|windows)(-[0-9a-f]{12})?)$'); do
+            docker rmi "$image" 2>/dev/null || true
+        done
     fi
+}
+
+# Build the image for a Dockerfile unless it already exists, and print its name.
+# The tag carries a hash of the Dockerfile, so a changed recipe gets a new image
+# instead of silently reusing an old one that a previous version of this script
+# left behind (with different packages, so with different binaries).
+builder_image() {
+    local dockerfile="$1"
+    local name="$2"
+    local recipe
+    recipe="$(sha256sum "$dockerfile" | cut -c1-12)"
+    local image="rincoin-builder:${name}-${recipe}"
+    if ! docker image inspect "$image" >/dev/null 2>&1; then
+        print_info "Building Docker image ${image}..." >&2
+        docker build -t "$image" -f "$dockerfile" "$BUILD_DIR" >&2
+    fi
+    echo "$image"
 }
 
 check_prerequisites() {
@@ -260,7 +279,23 @@ clone_and_checkout() {
         if [ -e .git ] && command -v rsync >/dev/null 2>&1; then
             git ls-files -z | rsync -a --ignore-missing-args --files-from=- --from0 "${PROJECT_ROOT}/" "${SOURCE_DIR}/"
             git ls-files --others --exclude-standard -z | rsync -a --ignore-missing-args --files-from=- --from0 "${PROJECT_ROOT}/" "${SOURCE_DIR}/" 2>/dev/null || true
-            cp -r "${PROJECT_ROOT}/.git" "${SOURCE_DIR}/.git" 2>/dev/null || true
+            if [ -d .git ]; then
+                cp -r "${PROJECT_ROOT}/.git" "${SOURCE_DIR}/.git" 2>/dev/null || true
+            else
+                # A linked worktree: its .git file points into the main repository, which
+                # the build container does not see. The copy gets a repository of its own
+                # at the same commit (the source files stay those of the worktree), so that
+                # share/genbuild.sh finds the tag or commit, and a modified tree, in it.
+                local head
+                head="$(git rev-parse HEAD)"
+                git clone --quiet --no-checkout "$PROJECT_ROOT" "${TEMP_DIR}/repository"
+                git -C "${TEMP_DIR}/repository" cat-file -e "${head}^{commit}" 2>/dev/null ||
+                    git -C "${TEMP_DIR}/repository" fetch --quiet "$PROJECT_ROOT" "$head"
+                mv "${TEMP_DIR}/repository/.git" "${SOURCE_DIR}/.git"
+                rm -rf "${TEMP_DIR}/repository"
+                git -C "$SOURCE_DIR" update-ref --no-deref HEAD "$head"
+                git -C "$SOURCE_DIR" read-tree HEAD
+            fi
         else
             cp -r "$PROJECT_ROOT/." "$SOURCE_DIR/"
             rm -rf "${SOURCE_DIR}/release-builds" "${SOURCE_DIR}/.build-cache" "${SOURCE_DIR}/depends/built" "${SOURCE_DIR}/depends/work"
@@ -317,15 +352,15 @@ build_linux_binaries() {
     print_info "Building Linux ${arch_label} on Ubuntu ${ubuntu_version}..."
 
     local dockerfile="${BUILD_DIR}/Dockerfile.linux-${arch_label}-${ubuntu_label}"
-    local image_name="rincoin-builder:linux-${arch_label}-${ubuntu_label}"
 
-    if ! docker image inspect "$image_name" >/dev/null 2>&1; then
-        cat > "$dockerfile" << DOCKERFILE_END
+    # git: share/genbuild.sh puts the tag (or the commit) into the version string;
+    # without it every binary reports "-unk".
+    cat > "$dockerfile" << DOCKERFILE_END
 FROM ubuntu:${ubuntu_version}
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 RUN apt-get update && apt-get install -y \
-    build-essential libtool autotools-dev automake pkg-config bsdmainutils python3 cmake \
+    build-essential libtool autotools-dev automake pkg-config bsdmainutils python3 cmake git \
     libssl-dev libevent-dev libboost-system-dev libboost-filesystem-dev libboost-test-dev libboost-thread-dev \
     libfmt-dev libminiupnpc-dev libzmq3-dev libsqlite3-dev \
     libqt5gui5 libqt5core5a libqt5dbus5 qttools5-dev qttools5-dev-tools libqrencode-dev \
@@ -333,8 +368,8 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /build
 DOCKERFILE_END
-        docker build -t "$image_name" -f "$dockerfile" "$BUILD_DIR"
-    fi
+    local image_name
+    image_name="$(builder_image "$dockerfile" "linux-${arch_label}-${ubuntu_label}")"
 
     local configure_cmd="CONFIG_SITE=\$PWD/depends/${host_triplet}/share/config.site ./configure --prefix=/ --disable-tests --disable-bench --enable-reduce-exports --with-incompatible-bdb=no"
     local db4_mount=""
@@ -393,10 +428,8 @@ build_windows_binaries() {
     print_info "Building Windows binaries..."
 
     local dockerfile="${BUILD_DIR}/Dockerfile.windows"
-    local image_name="rincoin-builder:windows"
 
-    if ! docker image inspect "$image_name" >/dev/null 2>&1; then
-        cat > "$dockerfile" << 'DOCKERFILE_END'
+    cat > "$dockerfile" << 'DOCKERFILE_END'
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
@@ -409,8 +442,8 @@ RUN update-alternatives --set x86_64-w64-mingw32-gcc /usr/bin/x86_64-w64-mingw32
     update-alternatives --set x86_64-w64-mingw32-g++ /usr/bin/x86_64-w64-mingw32-g++-posix
 WORKDIR /build
 DOCKERFILE_END
-        docker build -t "$image_name" -f "$dockerfile" "$BUILD_DIR"
-    fi
+    local image_name
+    image_name="$(builder_image "$dockerfile" "windows")"
 
     docker run --rm \
         -v "${SOURCE_DIR}:/source:ro" \
