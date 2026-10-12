@@ -29,13 +29,13 @@ Rincoin is developed openly through **Rincoin Community Forge**, the engineering
 
 Open participation does not mean unstructured development. Changes are expected to undergo review and testing appropriate to their impact, and consensus-sensitive changes require explicit technical scrutiny. Rincoin Community Forge develops and publishes software and proposals; adoption of consensus changes remains a decision of network participants.
 
-## Current consensus review
+## Block height 840,000
 
-*Rincoin is currently conducting a public review of the consensus decision at block height **840,000**.*
+Rincoin Community Forge has selected the S6/b scenario for the consensus transition at block height **840,000**: from that height the block subsidy is 4 RIN, then 2, 1 and 0.6 RIN in later phases with total issuance capped at 168,000,000 RIN, and every transaction signature is replay-protected. Rincoin Community Core **1.2.0** implements it. Nodes have to run 1.2.0 or later before that height; 1.1.0 stops at block 839,999 by design. Adoption of these rules remains a decision of the network participants who choose what software to run.
 
-*Analysis, candidate specifications, supporting data, and the public discussion are available in the [`consensus-840k`](https://github.com/rincoin-community/consensus-840k) repository.*
-
-*No scenario has been adopted at this stage. The objective is open technical review and, where possible, a common consensus that preserves a single Rincoin chain.*
+* [Release notes](doc/release-notes-rincoin.md) and the [1.2.0 release](https://github.com/rincoin-community/rincoin-core/releases/tag/v1.2.0)
+* [Operator runbook](https://github.com/rincoin-community/consensus-840k/blob/main/technology/transition-runbook.md): what node operators, pools, exchanges and wallet providers should do before, at and after the height
+* [`consensus-840k`](https://github.com/rincoin-community/consensus-840k): specification, analysis, supporting data and the public review that led to the decision
 
 ## Project lineage
 
