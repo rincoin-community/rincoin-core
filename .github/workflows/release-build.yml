@@ -131,12 +131,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macos-13 (x86_64) runners are no longer available on GitHub Actions.
-          # Uncomment when/if Intel runner support is restored.
-          # - runner: macos-13
-          #   arch: x86_64
-          #   tarball_suffix: x86_64-apple-darwin
-          - runner: macos-14
+          # The binaries need at least the macOS of the runner: the Homebrew
+          # libraries they link are built for it. So the runner is pinned, never
+          # macos-latest, and a change here is a release-notes item.
+          #
+          # No x86_64 build: Homebrew no longer ships Intel bottles for most of
+          # these dependencies, so an Intel runner would compile them from source.
+          - runner: macos-15
             arch: arm64
             tarball_suffix: arm64-apple-darwin
 
