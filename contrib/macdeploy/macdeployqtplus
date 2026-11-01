@@ -192,7 +192,35 @@ class DeploymentInfo(object):
                     return True
         return False
 
-def getFrameworks(binaryPath: str, verbose: int) -> List[FrameworkInfo]:
+def getRpaths(binaryPath: str) -> List[str]:
+    otoolbin=os.getenv("OTOOL", "otool")
+    otool = subprocess.run([otoolbin, "-l", binaryPath], stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+    if otool.returncode != 0:
+        sys.stderr.write(otool.stderr)
+        raise RuntimeError("otool -l failed with return code {}".format(otool.returncode))
+    rpaths = []
+    inRpath = False
+    for line in otool.stdout.split("\n"):
+        line = line.strip()
+        if line.startswith("cmd "):
+            inRpath = line == "cmd LC_RPATH"
+        elif inRpath and line.startswith("path "):
+            rpaths.append(line[len("path "):].rsplit(" (offset ", 1)[0])
+    return rpaths
+
+def resolveRpath(installName: str, binaryPath: str, sourcePath: str) -> str:
+    # Homebrew libraries refer to their siblings as @rpath/<name>, with
+    # LC_RPATH entries relative to @loader_path. Those resolve against the
+    # library's original location, not against its copy in the bundle.
+    loaderDir = os.path.dirname(sourcePath)
+    name = installName[len("@rpath/"):]
+    for rpath in getRpaths(binaryPath) + ["@loader_path"]:
+        candidate = os.path.normpath(os.path.join(rpath.replace("@loader_path", loaderDir), name))
+        if os.path.exists(candidate):
+            return candidate
+    raise RuntimeError("Could not resolve {} for {}".format(installName, sourcePath))
+
+def getFrameworks(binaryPath: str, verbose: int, sourcePath: Optional[str] = None) -> List[FrameworkInfo]:
     if verbose >= 3:
         print("Inspecting with otool: " + binaryPath)
     otoolbin=os.getenv("OTOOL", "otool")
@@ -211,8 +239,15 @@ def getFrameworks(binaryPath: str, verbose: int) -> List[FrameworkInfo]:
     
     libraries = []
     for line in otoolLines:
-        line = line.replace("@loader_path", os.path.dirname(binaryPath))
-        info = FrameworkInfo.fromOtoolLibraryLine(line.strip())
+        line = line.replace("@loader_path", os.path.dirname(binaryPath)).strip()
+        installName = None
+        m = FrameworkInfo.reOLine.match(line)
+        if m is not None and m.group(1).startswith("@rpath/"):
+            installName = m.group(1)
+            line = resolveRpath(installName, binaryPath, sourcePath or binaryPath) + line[len(installName):]
+        info = FrameworkInfo.fromOtoolLibraryLine(line)
+        if info is not None and installName is not None:
+            info.installName = installName
         if info is not None:
             if verbose >= 3:
                 print("Found framework:")
@@ -344,7 +379,7 @@ def deployFrameworks(frameworks: List[FrameworkInfo], bundlePath: str, binaryPat
         # install_name_tool it a new id.
         changeIdentification(framework.deployedInstallName, deployedBinaryPath, verbose)
         # Check for framework dependencies
-        dependencies = getFrameworks(deployedBinaryPath, verbose)
+        dependencies = getFrameworks(deployedBinaryPath, verbose, framework.sourceFilePath)
         
         for dependency in dependencies:
             changeInstallName(dependency.installName, dependency.deployedInstallName, deployedBinaryPath, verbose)
@@ -494,7 +529,7 @@ def deployPlugins(appBundleInfo: ApplicationBundleInfo, deploymentInfo: Deployme
         if strip:
             runStrip(destinationPath, verbose)
         
-        dependencies = getFrameworks(destinationPath, verbose)
+        dependencies = getFrameworks(destinationPath, verbose, sourcePath)
         
         for dependency in dependencies:
             changeInstallName(dependency.installName, dependency.deployedInstallName, destinationPath, verbose)
