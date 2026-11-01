@@ -32,7 +32,10 @@ check_exists() {
 sha256_check() {
   # Args: <sha256_hash> <filename>
   #
-  if check_exists sha256sum; then
+  if [ "$(uname)" = "Darwin" ]; then
+    # macOS 15 ships a BSD sha256sum that does not read a check line from stdin.
+    echo "${1}  ${2}" | shasum -a 256 -c
+  elif check_exists sha256sum; then
     echo "${1}  ${2}" | sha256sum -c
   elif check_exists sha256; then
     if [ "$(uname)" = "FreeBSD" ]; then
